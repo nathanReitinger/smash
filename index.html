@@ -144,6 +144,18 @@
   .ovb[hidden]{display:none;}
   .gap.bot.seg{border-style:solid;border-color:var(--overflow);background:var(--overflow-bg);color:var(--overflow);font-weight:600;}
   @media (prefers-reduced-motion:reduce){.cell.fresh{animation:none;}}
+  .gap.hide,.region.hide{display:none;}
+  .region.noname h3{visibility:hidden;}
+  .emptynote{text-align:center;color:var(--muted);font-size:.82rem;padding:26px 10px;border:1px dashed var(--border);border-radius:8px;margin:6px 0;}
+  .scen{display:flex;flex-direction:column;gap:6px;}
+  .sc{border:1px solid var(--border);border-radius:8px;padding:6px 8px;background:var(--bg);}
+  .sc.on{border-color:var(--accent);background:var(--accent-bg);}
+  .sc .hd{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+  .sc .st{font-size:.74rem;color:var(--muted);font-family:var(--mono);}
+  .sc .st.bad{color:var(--overflow);}
+  .sc .sw{font-size:.76rem;color:var(--muted);line-height:1.45;margin-top:5px;}
+  .why{margin-top:12px;font-size:.88rem;line-height:1.55;padding:10px 12px;border-left:3px solid var(--sfp);background:var(--sfp-bg);border-radius:0 8px 8px 0;}
+  .why b{display:block;margin-bottom:3px;}
 </style>
 </head>
 <body>
@@ -162,12 +174,8 @@
     <div id="controlsA">
       <label for="payload">Password attempt passed into gets(buffer)</label>
       <input id="payload" type="text" value="" maxlength="120" autocomplete="off" spellcheck="false" placeholder="enter a password…">
-      <div class="row">
-        <button data-pa="letmein">correct password</button>
-        <button data-pa="hi">short, safe input</button>
-        <button data-pa="AAAAAAAAAAAAAAAAAAAA">classic overflow (20×A)</button>
-        <button data-pa="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA">run off the stack (80×A) → segfault</button>
-      </div>
+      <label style="margin-top:12px;">Scenarios: load one, press Run all, and the result and reason are recorded here</label>
+      <div class="scen" id="scen"></div>
     </div>
     <div id="controlsB" style="display:none;">
       <p class="hint" style="margin:0 0 8px;">Scenario: a door lock reads a password, and its firmware hides a <span class="tt" tabindex="0" data-tip="A universal password built into the firmware so police can unlock any door. Normal code never calls it, which is exactly what makes it a good target.">backdoor_password()</span>. Overflow the input to jump straight to it without knowing any real password.</p>
@@ -190,6 +198,7 @@
       <button id="run">Run all ▶</button>
       <button id="pause" disabled>Pause ❚❚</button>
       <button id="reset">Reset ↺</button>
+      <button id="replaySetup" type="button">Replay setup</button>
     </div>
     <div class="row">
       <label style="margin:0;">Run-all speed</label>
@@ -198,6 +207,7 @@
     <div class="paceline" id="paceline"></div>
     <div class="bar"><i id="barfill"></i></div>
     <div class="desc" id="desc">Pick a mode, edit the value, then hit Run.</div>
+    <div class="why" id="why"><b>Why this happened</b><span id="whyText">Run to the end and the reason shows here.</span></div>
   </div>
 
   <div class="colR" id="colR">
@@ -279,7 +289,7 @@ const MODES={
   B:{code:CODE_B, fnName:'vulnerable()', regions:[{id:'lo',label:'unused stack space',size:8,free:1},{id:'buffer',label:'buffer[16]',size:16},{id:'sfp',label:'SFP (4 bytes)',size:4},{id:'ret',label:'RET (4 bytes)',size:4},{id:'hi',label:'stack above: caller’s data',size:16,free:1}],
      branches:[{id:'branch-0',label:'resume main() [0x080004a8]'},{id:'branch-1',label:'backdoor_password() [0x08000420]'},{id:'branch-2',label:'SEGFAULT'}]}
 };
-let inputBytes=[], chipPos=-1, current='A', steps=[], idx=-1, timer=null, mem={}, pend=null, lastArrow=null;
+let spaceBuilt=false, inputBytes=[], chipPos=-1, current='A', steps=[], idx=-1, timer=null, mem={}, pend=null, lastArrow=null;
 
 function toLE(n,len){const a=[];for(let i=0;i<len;i++){a.push(n&0xff);n=Math.floor(n/256);}return a;}
 function fromLE(b){let n=0;for(let i=b.length-1;i>=0;i--)n=n*256+b[i];return n>>>0;}
@@ -289,10 +299,10 @@ function renderCode(){
   MODES[current].code.forEach((t,i)=>{const d=document.createElement('div');d.className='line';d.id='line-'+i;const n=document.createElement('span');n.className='ln';n.textContent=i+1;d.appendChild(n);d.appendChild(document.createTextNode(t||'\u00A0'));el.appendChild(d);});
 }
 function renderRegionsSkeleton(){
-  const el=$('regions'); el.innerHTML=`<div class="gap top" data-gap="0">⋮  lower addresses — thousands more unused bytes  ⋮</div><div class="gap bot" id="gapBot" data-gap="1">⋮  higher addresses — caller’s frames, environment, kernel  ⋮</div>`; mem={}; let off=0;
+  const el=$('regions'); el.innerHTML=`<div class="gap top${spaceBuilt?'':' hide'}" data-gap="0">⋮  lower addresses — thousands more unused bytes  ⋮</div><div class="gap bot${spaceBuilt?'':' hide'}" id="gapBot" data-gap="1">⋮  higher addresses — caller’s frames, environment, kernel  ⋮</div>`; mem={}; let off=0; if(!spaceBuilt) el.insertAdjacentHTML('beforeend','<div class="emptynote" id="emptyNote">No address space yet. Press Step ▶ or Run all to build it.</div>');
   MODES[current].regions.forEach(r=>{
     mem[r.id]=Array(r.size).fill(null); r.addr=BASE+off; off+=r.size;
-    const div=document.createElement('div'); div.className='region'; div.style.marginTop='8px';
+    const div=document.createElement('div'); div.className='region'+(spaceBuilt?'':' hide noname'); div.dataset.id=r.id; div.style.marginTop='8px';
     div.innerHTML=`<h3>${gloss(r.label)} <span class="rg" data-r="${r.id}">${hex8(r.addr)} – ${hex8(r.addr+r.size-1)} ⓘ</span></h3><div class="cells" id="cells-${r.id}"></div>`;
     el.appendChild(div); if(r.id==='buffer'){const o=document.createElement('div');o.id='ovb';o.className='ovb';o.hidden=true;el.appendChild(o);}
   });
@@ -319,6 +329,16 @@ function clearActive(){document.querySelectorAll('.fbox.active').forEach(e=>e.cl
 function setActive(id){clearActive(); if(id) $(id)?.classList.add('active');}
 function setTaken(id,cls){ if(id) $(id)?.classList.add(cls); }
 
+function reveal(list){ (list||[]).forEach(k=>{
+  if(k==='gaps'){ document.querySelectorAll('#regions .gap').forEach(e=>e.classList.remove('hide')); $('emptyNote')?.remove(); }
+  else if(k==='cells') document.querySelectorAll('#regions .region').forEach(e=>e.classList.remove('hide'));
+  else document.querySelector(`#regions .region[data-id="${k}"]`)?.classList.remove('noname');
+}); }
+function preSteps(){ if(spaceBuilt) return [];
+  return [
+  {line:null, pre:1, reveal:['gaps'], desc:'The program starts. Before any code runs, the OS builds the process’s address space: a huge range of addresses, almost all of it empty or reserved. The two ⋮ bands stand for everything before and after the small slice we zoom in on.'},
+  {line:null, pre:1, reveal:['cells'], desc:'The stack segment is mapped. Here it is as bytes: one box per byte, with its address underneath. Lower addresses are at the top, and the stack grows toward them. Nothing in these boxes belongs to our program yet.'},
+  {line:null, pre:1, last:1, reveal:['lo','hi'], desc:'The dashed boxes are reserved: space below for later function calls and space above for the callers. Their bytes are leftovers. Our code is about to claim a piece in between.'}]; }
 function endFault(st){st.push({line:null,desc:'The process was killed by SIGSEGV. Nothing after that point ran. Change the input and rebuild to try again.'});return st;}
 function fillStep(m,bytes,line,retCls){
   const names=m==='A'?[['granted',4]]:[['SFP',4],['RET',4]],
@@ -334,12 +354,12 @@ function fillStep(m,bytes,line,retCls){
     desc:`gets() copies all ${W} bytes${m==='A'?' (your characters plus the \\0 terminator)':''} in one go, each at the next higher address.`+(over?` The buffer holds only 16, so ${over} bytes spill past its end (red).`:' They all fit inside buffer.')+(fault?` The next byte would land at ${hex8(BASE+8+LIMIT)}, outside the mapped stack, so the CPU raises SIGSEGV and the program dies mid-write.`:'')};
 }
 function buildStepsA(payload){
-  const steps=[]; const bytes=[...payload].map(c=>c.charCodeAt(0)&0xff); bytes.push(0); inputBytes=bytes;
+  const steps=[...preSteps()]; const bytes=[...payload].map(c=>c.charCodeAt(0)&0xff); bytes.push(0); inputBytes=bytes;
   steps.push({line:LA.MAIN, desc:'main() starts executing.', flow:{active:'fb-main'}});
   steps.push({line:LA.CALLFN, desc:'main() calls check_password().', flow:{active:'fb-fn'}});
   steps.push({line:LA.FN, desc:'Entering check_password(). Stack frame set up.'});
-  steps.push({line:LA.BUF, desc:'buffer[16] allocated — 16 uninitialized bytes.', ops:[{op:'alloc',region:'buffer',size:16}]});
-  steps.push({line:LA.VAR, desc:'int granted — 4 bytes reserved right after buffer (next higher addresses). They are uninitialized, so they still hold ??.', ops:[{op:'alloc',region:'granted',size:4}]});
+  steps.push({line:LA.BUF, reveal:['buffer'], desc:'buffer[16] allocated — 16 uninitialized bytes.', ops:[{op:'alloc',region:'buffer',size:16}]});
+  steps.push({line:LA.VAR, reveal:['granted'], desc:'int granted — 4 bytes reserved right after buffer (next higher addresses). They are uninitialized, so they still hold ??.', ops:[{op:'alloc',region:'granted',size:4}]});
   steps.push({line:LA.VAR, lab:'granted = 0 → 00 00 00 00', desc:'The initializer “= 0” runs: all four bytes of granted are filled with 00.', ops:[0,1,2,3].map(k=>({op:'byte',region:'granted',index:k,value:0,cls:'own'}))});
   steps.push({line:LA.PROMPT, desc:'Prompt printed.', print:'Enter password: '});
   steps.push({line:LA.GETS, tgtRegion:'buffer', print:payload+'\n', lab:'buffer = 0xbffff7a0', desc:'gets(buffer) reads characters from stdin and stores each one at the next address (buffer[0], buffer[1], …), then a \\0 terminator. It never checks how much room buffer has.'+(payload?'':' You typed nothing, so only the \\0 terminator is stored.')});
@@ -375,13 +395,13 @@ function buildStepsA(payload){
 }
 
 function buildStepsB(len, fillChar, redirect){
-  const steps=[]; const fc=(fillChar||'A').charCodeAt(0)&0xff;
+  const steps=[...preSteps()]; const fc=(fillChar||'A').charCodeAt(0)&0xff;
   const bytes=Array(len).fill(fc); inputBytes=bytes;
   if(redirect && len>=20){ const a=toLE(RET_SECRET,4); for(let k=0;k<4;k++) bytes[20+k]=a[k]; }
   steps.push({line:LB.MAIN, desc:'main() starts executing.', flow:{active:'fb-main'}});
-  steps.push({line:LB.CALLFN, lab:'CALL pushes return addr 0x080004a8', desc:'main() calls vulnerable(). CALL pushes the return address (0x080004a8).', ops:[0,1,2,3].map(k=>({op:'byte',region:'ret',index:k,value:toLE(RET_MAIN,4)[k],cls:'alloc'})), flow:{active:'fb-fn'}});
-  steps.push({line:LB.FN, lab:'save caller’s EBP 0xbffff7d8 → SFP', desc:'Entering vulnerable(). The prologue saves the caller’s frame pointer (0xbffff7d8) into the 4-byte SFP slot.', ops:toLE(0xbffff7d8,4).map((v,k)=>({op:'byte',region:'sfp',index:k,value:v,cls:'alloc'}))});
-  steps.push({line:LB.BUF, desc:'buffer[16] allocated (uninitialized ??). Order: buffer, then SFP, then RET.', ops:[{op:'alloc',region:'buffer',size:16}]});
+  steps.push({line:LB.CALLFN, reveal:['ret'], lab:'CALL pushes return addr 0x080004a8', desc:'main() calls vulnerable(). CALL pushes the return address (0x080004a8).', ops:[0,1,2,3].map(k=>({op:'byte',region:'ret',index:k,value:toLE(RET_MAIN,4)[k],cls:'alloc'})), flow:{active:'fb-fn'}});
+  steps.push({line:LB.FN, reveal:['sfp'], lab:'save caller’s EBP 0xbffff7d8 → SFP', desc:'Entering vulnerable(). The prologue saves the caller’s frame pointer (0xbffff7d8) into the 4-byte SFP slot.', ops:toLE(0xbffff7d8,4).map((v,k)=>({op:'byte',region:'sfp',index:k,value:v,cls:'alloc'}))});
+  steps.push({line:LB.BUF, reveal:['buffer'], desc:'buffer[16] allocated (uninitialized ??). Order: buffer, then SFP, then RET.', ops:[{op:'alloc',region:'buffer',size:16}]});
   steps.push({line:LB.PROMPT, desc:'Prompt printed.', print:'Enter input: '});
   steps.push({line:LB.GETS, tgtRegion:'buffer', print:escB(bytes)+'\n', lab:'buffer = 0xbffff7a0', desc:'gets(buffer) reads the input from stdin and stores each byte at the next address, buffer[0], buffer[1], … It never checks the buffer’s size.'});
   steps.push(fillStep('B',bytes,LB.GETS,redirect&&len>=20?'legit':'hit')); if(bytes.length>LIMIT) return endFault(steps);
@@ -461,14 +481,16 @@ function draw(anim){
   const S=$('split').getBoundingClientRect(), L=$('colL').getBoundingClientRect(), R=$('colR').getBoundingClientRect();
   if(!ln||!tg||R.left<L.right-10) return hide();
   const c=$('code').getBoundingClientRect(), a=ln.getBoundingClientRect(), t=tg.getBoundingClientRect();
-  const x1=c.right-8-S.left, y1=a.top+a.height/2-S.top, x2=t.left+t.width/2-S.left, y2=t.top-3-S.top;
-  const c1=x1+Math.max(60,(x2-x1)/2), ye=y2-9, col=`var(${A.color})`;
-  p.setAttribute('d',`M${x1} ${y1}C${c1} ${y1} ${x2} ${y2-80} ${x2} ${ye}`);
+  /* tip stops 11px above the block; the arrow lands at a fixed ~50° slope so the end is a gentle glide, not a hook */
+  const x1=c.right-8-S.left, y1=a.top+a.height/2-S.top, ex=t.left+t.width/2-S.left, ey=t.top-11-S.top;
+  const ux=.64, uy=.77, bx=ex-9*ux, by=ey-9*uy, K=Math.min(90,Math.max(50,Math.abs(bx-x1)*.4));
+  const c1x=x1+Math.max(60,(bx-x1)/2), c2x=bx-K*ux, c2y=by-K*uy, col=`var(${A.color})`;
+  p.setAttribute('d',`M${x1} ${y1}C${c1x} ${y1} ${c2x} ${c2y} ${bx} ${by}`);
   p.style.stroke=col; $('ah').style.fill=col; $('as').style.fill=col; $('alr').style.stroke=col;
-  $('ah').setAttribute('points',`${x2},${y2} ${x2-6},${ye} ${x2+6},${ye}`);
+  $('ah').setAttribute('points',`${ex},${ey} ${bx+uy*6},${by-ux*6} ${bx-uy*6},${by+ux*6}`);
   $('as').setAttribute('cx',x1); $('as').setAttribute('cy',y1);
   const lt=$('alt'); lt.textContent=A.label;
-  lt.setAttribute('x',(x1+3*c1+4*x2)/8); lt.setAttribute('y',(4*y1+3*(y2-80)+ye)/8);
+  lt.setAttribute('x',(x1+3*c1x+3*c2x+bx)/8); lt.setAttribute('y',(4*y1+3*c2y+by)/8);
   const bb=lt.getBBox(), r=$('alr');
   r.setAttribute('x',bb.x-7); r.setAttribute('y',bb.y-3); r.setAttribute('width',bb.width+14); r.setAttribute('height',bb.height+6);
   if(anim){
@@ -496,6 +518,7 @@ function drawData(A,S,anim){
   ds.forEach(e=>e.classList.add('show'));
 }
 function preview(s){
+  reveal(s.reveal); if(s.last) spaceBuilt=true; if(idx===steps.length-1) showWhy();
   document.querySelectorAll('.line.active').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.tgt').forEach(e=>e.classList.remove('tgt'));
   if(s.line!=null) $('line-'+s.line)?.classList.add('active');
@@ -538,7 +561,7 @@ function stepForward(fast){
 }
 function sched(){
   if(idx>=steps.length-1){stopPlay();return;}
-  const s=steps[idx]||{}, d=pace()*((s.flow&&s.flow.taken)||s.status?1.8:1)+(s.fill?Math.min(1300,(s.ops||[]).length*40):0), b=$('barfill');
+  const s=steps[idx]||{}, d=pace()*((s.flow&&s.flow.taken)||s.status?1.8:1)+(s.fill?Math.min(1300,(s.ops||[]).length*40):0)+(s.pre?pace()*.8:0), b=$('barfill');
   b.style.animation='none'; void b.offsetWidth; b.style.animation=`fill ${d}ms linear forwards`;
   timer=setTimeout(()=>{try{stepForward();}catch(e){console.error(e);} sched();},d);
 }
@@ -556,6 +579,7 @@ function rebuild(){
   $('desc').textContent='Ready. Press Step to go one step at a time, or Run all to watch it play at the speed set below.';
   $('stepcount').textContent=`Step 0 / ${steps.length}`;
   $('step').disabled=false;
+  $('whyText').textContent='Run to the end and the reason shows here.'; renderScen();
 }
 function switchMode(m){
   current=m;
@@ -582,6 +606,7 @@ function runAll(){
 $('run').addEventListener('click', runAll);
 $('step').addEventListener('click', ()=>{stopPlay(); if(idx<0) rebuild(); stepForward(true);});
 $('pause').addEventListener('click', stopPlay);
+$('replaySetup').addEventListener('click', ()=>{spaceBuilt=false; rebuild();});
 $('reset').addEventListener('click', ()=>{
   
   
@@ -651,6 +676,45 @@ function gloss(t){const seen={};return esc(String(t)).replace(GRE,(m,p,k)=>seen[
   document.addEventListener('keydown',e=>{if(e.key==='Escape') hide(); else if((e.key==='Enter'||e.key===' ')&&T(e)&&e.target.classList.contains('tt')){e.preventDefault();e.target.click();}});
   addEventListener('scroll',hide,true); addEventListener('resize',hide);
 })();
+const SCEN=[
+ {id:'ovf',name:'Overflow',inp:'A'.repeat(20)},
+ {id:'none',name:'Nothing as input',inp:''},
+ {id:'ok',name:'Correct password',inp:'letmein'},
+ {id:'rand',name:'Random long input that overflows',inp:'xK9#qLz2!vTb7Rm4Wd8Yc5'},
+ {id:'huge',name:'Really, really long input',inp:'Qz7!mK2x'.repeat(13).slice(0,100)},
+ {id:'bad',name:'Short input that fails the test',inp:'hello'}];
+const BADK=new Set(['flip','ret','segv','hijack','crash']); const done={};
+function outcomeA(p){
+  const n=p.length, B=n+1, b=[...p].map(c=>c.charCodeAt(0)&255).concat(0), gr=fromLE([0,1,2,3].map(k=>b[16+k]||0));
+  if(B>LIMIT) return {k:'segv',t:'Segmentation fault',why:`${n} characters plus the \\0 is ${B} bytes, but only ${LIMIT} bytes above buffer are mapped stack. gets() kept copying until the next byte (${hex8(BASE+8+LIMIT)}) was outside it, and the CPU raised SIGSEGV mid-write. printf, strcmp and everything after never ran.`};
+  if(p==='letmein') return {k:'ok',t:'Access granted (legit)',why:'strcmp(buffer, "letmein") returned 0, so line 15 set granted = 1. This is the one legitimate way in, and nothing overflowed.'};
+  if(B>24) return {k:'ret',t:'Granted, then crash',why:`${B} bytes into a 16-byte buffer. Bytes 16–19 made granted ${hex8(gr)} (nonzero), so the secret area opened without a password. But the input also overwrote the saved return address (bytes 24–27), so when check_password() returned, the CPU jumped to garbage and crashed.`};
+  if(B>17||(B===17&&gr)) return {k:'flip',t:'Access granted by overflow',why:`${n} characters plus the \\0 is ${B} bytes, but buffer holds 16. Bytes 16–19 spilled into granted and made it ${hex8(gr)} (${gr|0}). The password never matched, but if(granted) is true for any nonzero value, so secret_function() ran.`};
+  if(B===17) return {k:'edge',t:'Denied (1-byte spill)',why:'Exactly 16 characters fill buffer, so the \\0 terminator spilled one byte into granted. That byte was already 0, so granted is unchanged and the answer is still Access denied. Add one more character and it flips.'};
+  if(n===0) return {k:'none',t:'Denied (empty input)',why:'Nothing typed, so gets() stored only the \\0 terminator in buffer[0]. strcmp compares "" with "letmein", which does not match, so granted stays 0 and the else branch prints Access denied. No overflow: 1 of 16 bytes used.'};
+  return {k:'bad',t:'Denied (wrong password)',why:`${n} characters plus the \\0 is ${B} bytes, which fits in the 16-byte buffer, so nothing overflowed. strcmp finds a mismatch with "letmein", granted stays 0, and the else branch prints Access denied.`};
+}
+function outcomeB(len,fc,redirect){
+  const b=Array(len).fill((fc||'A').charCodeAt(0)&255);
+  if(redirect&&len>=20){const a=toLE(RET_SECRET,4);for(let k=0;k<4;k++) b[20+k]=a[k];}
+  if(b.length>LIMIT) return {k:'segv',t:'Segmentation fault',why:`${b.length} bytes, but only ${LIMIT} bytes above buffer are mapped stack. gets() hit unmapped memory at ${hex8(BASE+8+LIMIT)} and the CPU raised SIGSEGV mid-write.`};
+  const num=fromLE([0,1,2,3].map(k=>b.length>20+k?b[20+k]:toLE(RET_MAIN,4)[k]));
+  if(num===RET_SECRET) return {k:'hijack',t:'Control hijacked',why:`Input bytes 20–23 landed in RET and set it to ${hex8(num)}, the address of backdoor_password(). When vulnerable() returned, the CPU popped that address and jumped there instead of back to main().`};
+  if(num===RET_MAIN) return {k:'ok',t:'Returned normally',why:len<=16?`${len} bytes fit inside the 16-byte buffer, so SFP and RET were untouched and the function returned to main().`:`${len} bytes spilled into SFP but stopped before RET. The return address was intact, so the function returned to main(). (Damage to the saved frame pointer is not modeled here.)`};
+  return {k:'crash',t:'Crash',why:`The input overwrote RET with ${hex8(num)}. ret popped that value and jumped to it, but it is not mapped code, so the CPU faulted: Segmentation fault.`};
+}
+function showWhy(){
+  const o=current==='A'?outcomeA($('payload').value):outcomeB(+$('len').value,$('fill').value,$('redirect').checked);
+  $('whyText').textContent=o.why;
+  if(current==='A'){ const sc=SCEN.find(x=>x.inp===$('payload').value); if(sc){ done[sc.id]=o; renderScen(); } }
+}
+function renderScen(){
+  const el=$('scen'); if(!el) return; const cur=$('payload').value; el.innerHTML='';
+  SCEN.forEach(sc=>{ const r=done[sc.id], d=document.createElement('div'); d.className='sc'+(sc.inp===cur?' on':'');
+    d.innerHTML=`<div class="hd"><button type="button" data-sc="${sc.id}">${sc.name}</button><span class="st${r&&BADK.has(r.k)?' bad':''}">${r?'✓ '+esc(r.t):'not tried'}</span></div>`+(r?`<div class="sw">${esc(r.why)}</div>`:'');
+    el.appendChild(d); });
+}
+$('scen').addEventListener('click',e=>{ const b=e.target.closest('[data-sc]'); if(!b) return; $('payload').value=SCEN.find(x=>x.id===b.dataset.sc).inp; rebuild(); });
 renderCode(); updateLenLabel(); updatePace(); rebuild();
 </script>
 </body>
