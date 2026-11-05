@@ -10,16 +10,16 @@
     --bg:#f7f7f9;--panel:#fff;--text:#1a1a1a;--muted:#6b6b76;--border:#e1e1e6;
     --buffer:#3b82f6;--buffer-bg:#dbeafe;--overflow:#dc2626;--overflow-bg:#fee2e2;
     --sfp:#d97706;--sfp-bg:#fef3c7;--accent:#7c3aed;--accent-bg:#ede9fe;
-    --mono:'SFMono-Regular',Consolas,Menlo,monospace;color-scheme:light;
+    --mono:'SFMono-Regular',Consolas,Menlo,monospace;color-scheme:light;--in-bg:#fffbe9;--in-fg:#1a1a1a;--in-bd:#e2cf86;--in-ph:#8a7d4a;
   }
   @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
     --bg:#0f0f12;--panel:#18181d;--text:#e8e8ea;--muted:#9a9aa5;--border:#2b2b33;
     --buffer:#60a5fa;--buffer-bg:#1e3a5f;--overflow:#f87171;--overflow-bg:#3a1414;
-    --sfp:#fbbf24;--sfp-bg:#3a2a0a;--accent:#a78bfa;--accent-bg:#2a2340;color-scheme:dark; } }
+    --sfp:#fbbf24;--sfp-bg:#3a2a0a;--accent:#a78bfa;--accent-bg:#2a2340;color-scheme:dark;--in-bg:#2b2819;--in-fg:#f4ecd0;--in-bd:#8c7424;--in-ph:#a89a62; } }
   :root[data-theme="dark"]{
     --bg:#0f0f12;--panel:#18181d;--text:#e8e8ea;--muted:#9a9aa5;--border:#2b2b33;
     --buffer:#60a5fa;--buffer-bg:#1e3a5f;--overflow:#f87171;--overflow-bg:#3a1414;
-    --sfp:#fbbf24;--sfp-bg:#3a2a0a;--accent:#a78bfa;--accent-bg:#2a2340;color-scheme:dark; }
+    --sfp:#fbbf24;--sfp-bg:#3a2a0a;--accent:#a78bfa;--accent-bg:#2a2340;color-scheme:dark;--in-bg:#2b2819;--in-fg:#f4ecd0;--in-bd:#8c7424;--in-ph:#a89a62; }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     padding:env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px);}
@@ -28,7 +28,7 @@
   .colL{flex:1 1 400px;min-width:320px;}
   .colR{flex:1 1 380px;min-width:300px;display:flex;flex-direction:column;}
   #arrowSvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6;}
-  .ap{opacity:0;} .ap.show{opacity:.95;transition:opacity .2s;} .ap.late.show{transition-delay:.7s;}
+  .ap{opacity:0;} .ap.show{opacity:.95;transition:opacity .12s;} .ap.late.show{transition-delay:.2s;}
   #arrowPath{fill:none;stroke-width:3;stroke-linecap:round;}
   #alt{font-family:var(--mono);font-size:12px;fill:var(--text);text-anchor:middle;}
   #alr{fill:var(--panel);stroke-width:1.5;}
@@ -115,14 +115,13 @@
   .ptab td{padding:5px 6px;border-bottom:1px solid var(--border);}
   .cell,.rg,.gap{cursor:pointer;}
   .helpbtn{margin-top:10px;}
-  .dp{opacity:0;} .dp.show{opacity:.95;transition:opacity .25s .5s;}
+  .dp{opacity:0;} .dp.show{opacity:.95;transition:opacity .12s .12s;}
   #dataPath{fill:none;stroke-width:3;stroke-dasharray:7 5;stroke-linecap:round;}
   #dlt{font-family:var(--mono);font-size:12px;fill:var(--text);text-anchor:middle;}
   #dlr{fill:var(--panel);stroke-width:1.5;}
-  #payload,#fill{background:#fff3b0;color:#1a1a1a;border:2px solid #d9a400;font-weight:600;}
+  #payload,#fill{background:var(--in-bg);color:var(--in-fg);border:2px solid var(--in-bd);font-weight:600;}
   #payload{font-size:1rem;padding:10px 12px;}
-  #payload::placeholder{color:#7a6a2a;}
-  #payload:placeholder-shown{border-color:var(--overflow);}
+  #payload::placeholder{color:var(--in-ph);font-weight:400;}
   #payload:focus,#fill:focus{outline:3px solid var(--accent);}
   .statusline{font-family:var(--mono);font-size:0.8rem;margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);}
   .console{font-family:var(--mono);font-size:0.82rem;background:#0b0b0f;color:#9fe79f;border-radius:8px;padding:10px 12px;min-height:3.2em;white-space:pre-wrap;}
@@ -137,6 +136,14 @@
   .chip[data-tip]{cursor:help;}
   #tip{position:fixed;left:0;top:0;z-index:100;width:max-content;max-width:min(280px,calc(100vw - 16px));padding:8px 10px;border-radius:8px;background:var(--text);color:var(--bg);font:400 .78rem/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;text-transform:none;letter-spacing:0;box-shadow:0 6px 20px rgba(0,0,0,.3);pointer-events:none;visibility:hidden;opacity:0;transition:opacity .12s;}
   #tip.on{visibility:visible;opacity:1;}
+  @keyframes popin{from{opacity:0;transform:scale(.4)}60%{transform:scale(1.18)}to{opacity:1}}
+  .cell.fresh{animation:popin .32s ease-out backwards;}
+  .chip.ov{border-color:var(--overflow);color:var(--overflow);background:var(--overflow-bg);}
+  .chip.sf{border-color:var(--sfp);color:var(--sfp);background:var(--sfp-bg);}
+  .ovb{margin:8px 0 0;padding:7px 10px;border-left:3px solid var(--overflow);background:var(--overflow-bg);color:var(--overflow);font:600 .78rem/1.45 var(--mono);border-radius:0 8px 8px 0;}
+  .ovb[hidden]{display:none;}
+  .gap.bot.seg{border-style:solid;border-color:var(--overflow);background:var(--overflow-bg);color:var(--overflow);font-weight:600;}
+  @media (prefers-reduced-motion:reduce){.cell.fresh{animation:none;}}
 </style>
 </head>
 <body>
@@ -154,11 +161,12 @@
     <div class="code" id="code"></div>
     <div id="controlsA">
       <label for="payload">Password attempt passed into gets(buffer)</label>
-      <input id="payload" type="text" value="hello" maxlength="20" autocomplete="off" spellcheck="false" placeholder="enter a password…">
+      <input id="payload" type="text" value="" maxlength="120" autocomplete="off" spellcheck="false" placeholder="enter a password…">
       <div class="row">
         <button data-pa="letmein">correct password</button>
         <button data-pa="hi">short, safe input</button>
         <button data-pa="AAAAAAAAAAAAAAAAAAAA">classic overflow (20×A)</button>
+        <button data-pa="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA">run off the stack (80×A) → segfault</button>
       </div>
     </div>
     <div id="controlsB" style="display:none;">
@@ -166,7 +174,7 @@
       <div class="row">
         <div><label for="fill">Fill byte</label><input id="fill" type="text" maxlength="1" value="A"></div>
         <div style="flex:1;min-width:220px;"><label for="len">Overflow length: <span id="lenLabel">24</span> bytes <span class="hint" id="regionLabel"></span></label>
-          <input type="range" id="len" min="0" max="24" value="24" style="width:100%;"></div>
+          <input type="range" id="len" min="0" max="80" value="24" style="width:100%;"></div>
         <div><label><input type="checkbox" id="redirect" style="width:auto;margin-right:6px;">craft exact RET → backdoor_password()</label></div>
       </div>
       <div class="row">
@@ -174,6 +182,7 @@
         <button data-pb="20,false">fill exactly to RET boundary</button>
         <button data-pb="24,false">garbage overwrite → crash</button>
         <button data-pb="24,true">precise redirect → backdoor password</button>
+        <button data-pb="80,false">too long → segfault in gets()</button>
       </div>
     </div>
     <div class="row">
@@ -184,7 +193,7 @@
     </div>
     <div class="row">
       <label style="margin:0;">Run-all speed</label>
-      <input type="range" id="speed" min="0" max="4000" step="250" value="0" style="flex:1;min-width:150px;">
+      <input type="range" id="speed" min="100" max="2000" step="100" value="500" style="flex:1;min-width:150px;">
     </div>
     <div class="paceline" id="paceline"></div>
     <div class="bar"><i id="barfill"></i></div>
@@ -254,20 +263,20 @@ const CODE_B=["void backdoor_password() {  // universal key for police","    pri
 "void vulnerable() {","    char buffer[16];   // buffer, then SFP, then RET follow","    printf(\"Enter input: \");","    gets(buffer);","    printf(\"You typed: %s\\n\", buffer);","}","",
 "int main() {","    vulnerable();","    printf(\"Back in main - program continues normally.\\n\");","    return 0;","}"];
 const LB={SECRET:0,PRINT:1,SEND:2,FN:4,BUF:5,PROMPT:6,GETS:7,TYPED:8,FEND:9,MAIN:11,CALLFN:12,RESUME:13,RET:14};
-const RET_MAIN=0x080004a8, RET_SECRET=0x08000420, BASE=0xbffff798;
+const RET_MAIN=0x080004a8, RET_SECRET=0x08000420, BASE=0xbffff798, LIMIT=64;
 const hex8=n=>'0x'+n.toString(16).padStart(8,'0');
 const escB=a=>a.map(v=>v>=32&&v<=126?String.fromCharCode(v):'\\x'+v.toString(16).padStart(2,'0')).join('');
 const upTo0=a=>{const z=a.indexOf(0);return z<0?a:a.slice(0,z);};
 const rangeTip=r=>{const lo=r.addr,hi=r.addr+r.size-1,f=n=>`${hex8(n)} = ${n.toLocaleString('en-US')}`;
   return `LOW address: ${f(lo)}\nHIGH address: ${f(hi)}\nSize: ${r.size} bytes (high − low + 1)\n`+(r.id==='lo'?'Unused. These are LOWER addresses than the variables: the stack grows down into this space when more functions are called.':r.id==='hi'?'Unused here. These are HIGHER addresses than the variables: older stack data (the callers) lives up here, and an overflow writes toward it.':'Each box to the right is one address higher. gets() writes toward higher addresses.');};
-const gapTip=n=>n===0?`Everything below ${hex8(BASE)} (${BASE.toLocaleString('en-US')}) is lower-address memory, counting down toward 0. The stack grows DOWN into it as more functions are called. A real process has megabytes of it, so only a few bytes are drawn.`:`Everything above the last box is higher-address memory: the callers’ frames, environment variables and arguments, up to the top of the stack (0xc0000000 = 3,221,225,472 on classic 32-bit Linux). Overflows write toward here.`;
+const gapTip=n=>n===0?`Everything below ${hex8(BASE)} (${BASE.toLocaleString('en-US')}) is lower-address memory, counting down toward 0. The stack grows DOWN into it as more functions are called. A real process has megabytes of it, so only a few bytes are drawn.`:`Everything above the last box is higher-address memory: the callers’ frames, environment variables and arguments, This demo pretends the mapped stack ends at ${hex8(BASE+8+LIMIT)} (buffer + ${LIMIT} bytes). A write past it is a segmentation fault. A real stack has far more room above, so a real overflow needs more bytes, but the outcome is the same.`;
 const CHR=v=>v===0?'\\0':v===32?'␣':v>32&&v<=126?String.fromCharCode(v):'·';
 const chipTxt=v=>v>=33&&v<=126?String.fromCharCode(v):v===0?'\\0':'x'+v.toString(16).padStart(2,'0');
 
 const MODES={
-  A:{code:CODE_A, fnName:'check_password()', regions:[{id:'lo',label:'unused stack space',size:8,free:1},{id:'buffer',label:'buffer[16]',size:16},{id:'granted',label:'granted (int)',size:4},{id:'hi',label:'unused space (rest of the stack)',size:8,free:1}],
-     branches:[{id:'branch-0',label:'secret_function()'},{id:'branch-1',label:'Access denied'}]},
-  B:{code:CODE_B, fnName:'vulnerable()', regions:[{id:'lo',label:'unused stack space',size:8,free:1},{id:'buffer',label:'buffer[16]',size:16},{id:'sfp',label:'SFP (4 bytes)',size:4},{id:'ret',label:'RET (4 bytes)',size:4},{id:'hi',label:'unused space (rest of the stack)',size:8,free:1}],
+  A:{code:CODE_A, fnName:'check_password()', regions:[{id:'lo',label:'unused stack space',size:8,free:1},{id:'buffer',label:'buffer[16]',size:16},{id:'granted',label:'granted (int)',size:4},{id:'hi',label:'stack above: saved EBP, return addr, caller data',size:16,free:1}],
+     branches:[{id:'branch-0',label:'secret_function()'},{id:'branch-1',label:'Access denied'},{id:'branch-2',label:'SEGFAULT'}]},
+  B:{code:CODE_B, fnName:'vulnerable()', regions:[{id:'lo',label:'unused stack space',size:8,free:1},{id:'buffer',label:'buffer[16]',size:16},{id:'sfp',label:'SFP (4 bytes)',size:4},{id:'ret',label:'RET (4 bytes)',size:4},{id:'hi',label:'stack above: caller’s data',size:16,free:1}],
      branches:[{id:'branch-0',label:'resume main() [0x080004a8]'},{id:'branch-1',label:'backdoor_password() [0x08000420]'},{id:'branch-2',label:'SEGFAULT'}]}
 };
 let inputBytes=[], chipPos=-1, current='A', steps=[], idx=-1, timer=null, mem={}, pend=null, lastArrow=null;
@@ -280,12 +289,12 @@ function renderCode(){
   MODES[current].code.forEach((t,i)=>{const d=document.createElement('div');d.className='line';d.id='line-'+i;const n=document.createElement('span');n.className='ln';n.textContent=i+1;d.appendChild(n);d.appendChild(document.createTextNode(t||'\u00A0'));el.appendChild(d);});
 }
 function renderRegionsSkeleton(){
-  const el=$('regions'); el.innerHTML=`<div class="gap top" data-gap="0">⋮  lower addresses — thousands more unused bytes  ⋮</div><div class="gap bot" data-gap="1">⋮  higher addresses — caller’s frames, environment, kernel  ⋮</div>`; mem={}; let off=0;
+  const el=$('regions'); el.innerHTML=`<div class="gap top" data-gap="0">⋮  lower addresses — thousands more unused bytes  ⋮</div><div class="gap bot" id="gapBot" data-gap="1">⋮  higher addresses — caller’s frames, environment, kernel  ⋮</div>`; mem={}; let off=0;
   MODES[current].regions.forEach(r=>{
     mem[r.id]=Array(r.size).fill(null); r.addr=BASE+off; off+=r.size;
     const div=document.createElement('div'); div.className='region'; div.style.marginTop='8px';
     div.innerHTML=`<h3>${gloss(r.label)} <span class="rg" data-r="${r.id}">${hex8(r.addr)} – ${hex8(r.addr+r.size-1)} ⓘ</span></h3><div class="cells" id="cells-${r.id}"></div>`;
-    el.appendChild(div);
+    el.appendChild(div); if(r.id==='buffer'){const o=document.createElement('div');o.id='ovb';o.className='ovb';o.hidden=true;el.appendChild(o);}
   });
 }
 function renderBranchesSkeleton(){
@@ -300,16 +309,30 @@ function cellHTML(c,a){
   if(c.v==null) return `<span class="ch">?</span><span class="hx">??</span>${ad}`;
   return `<span class="ch">${CHR(c.v)}</span><span class="hx">${c.v.toString(16).padStart(2,'0')}</span>${ad}`;
 }
-function renderMem(cur){
+function renderMem(cur,fresh,dl){
   MODES[current].regions.forEach(r=>{
     const el=$('cells-'+r.id); el.innerHTML='';
-    mem[r.id].forEach((c,i)=>{const d=document.createElement('div');d.className='cell'+(c?' '+c.cls:' free')+(cur&&cur.region===r.id&&cur.index===i?' current':'');d.innerHTML=cellHTML(c,r.addr+i);d.dataset.a=r.addr+i;d.dataset.r=r.id;d.dataset.i=i;el.appendChild(d);});
+    mem[r.id].forEach((c,i)=>{const d=document.createElement('div');d.className='cell'+(c?' '+c.cls:' free')+(cur&&cur.region===r.id&&cur.index===i?' current':'');d.innerHTML=cellHTML(c,r.addr+i);d.dataset.a=r.addr+i;d.dataset.r=r.id;d.dataset.i=i;const fk=fresh&&fresh[r.id+':'+i];if(fk!=null){d.classList.add('fresh');d.style.animationDelay=Math.round(fk*dl)+'ms';}el.appendChild(d);});
   });
 }
 function clearActive(){document.querySelectorAll('.fbox.active').forEach(e=>e.classList.remove('active'));}
 function setActive(id){clearActive(); if(id) $(id)?.classList.add('active');}
 function setTaken(id,cls){ if(id) $(id)?.classList.add(cls); }
 
+function endFault(st){st.push({line:null,desc:'The process was killed by SIGSEGV. Nothing after that point ran. Change the input and rebuild to try again.'});return st;}
+function fillStep(m,bytes,line,retCls){
+  const names=m==='A'?[['granted',4]]:[['SFP',4],['RET',4]],
+    L=[['buffer',16,'own'],...(m==='A'?[['granted',4,'hit']]:[['sfp',4,'sfpw'],['ret',4,retCls]]),['hi',16,'hit']],
+    W=Math.min(bytes.length,LIMIT), ops=[]; let beyond=0;
+  for(let i=0;i<W;i++){ let o=i,ok=0; for(const [r,n,c] of L){ if(o<n){ops.push({op:'byte',region:r,index:o,value:bytes[i],cls:c});ok=1;break;} o-=n; } if(!ok) beyond++; }
+  let rem=Math.max(0,W-16); const over=rem, parts=[];
+  for(const [n,z] of names){ if(rem<=0) break; const k=Math.min(rem,z); parts.push(k===z?`all ${z} bytes of ${n}`:`${k} of the ${z} bytes of ${n}`); rem-=k; }
+  if(rem>0) parts.push(`${rem} bytes of the caller’s stack data`);
+  const fault=bytes.length>LIMIT;
+  return {line, tgtRegion:'buffer', lab:`gets() writes ${W} bytes`, chip:999, fill:1, ops, over, beyond, fault, parts:parts.join(', then '),
+    flow:fault?{active:'fb-branch-2',taken:'fb-branch-2',cls:'crash'}:undefined, print:fault?'Segmentation fault (core dumped)\n':undefined,
+    desc:`gets() copies all ${W} bytes${m==='A'?' (your characters plus the \\0 terminator)':''} in one go, each at the next higher address.`+(over?` The buffer holds only 16, so ${over} bytes spill past its end (red).`:' They all fit inside buffer.')+(fault?` The next byte would land at ${hex8(BASE+8+LIMIT)}, outside the mapped stack, so the CPU raises SIGSEGV and the program dies mid-write.`:'')};
+}
 function buildStepsA(payload){
   const steps=[]; const bytes=[...payload].map(c=>c.charCodeAt(0)&0xff); bytes.push(0); inputBytes=bytes;
   steps.push({line:LA.MAIN, desc:'main() starts executing.', flow:{active:'fb-main'}});
@@ -320,13 +343,7 @@ function buildStepsA(payload){
   steps.push({line:LA.VAR, lab:'granted = 0 → 00 00 00 00', desc:'The initializer “= 0” runs: all four bytes of granted are filled with 00.', ops:[0,1,2,3].map(k=>({op:'byte',region:'granted',index:k,value:0,cls:'own'}))});
   steps.push({line:LA.PROMPT, desc:'Prompt printed.', print:'Enter password: '});
   steps.push({line:LA.GETS, tgtRegion:'buffer', print:payload+'\n', lab:'buffer = 0xbffff7a0', desc:'gets(buffer) reads characters from stdin and stores each one at the next address (buffer[0], buffer[1], …), then a \\0 terminator. It never checks how much room buffer has.'+(payload?'':' You typed nothing, so only the \\0 terminator is stored.')});
-  bytes.forEach((b,i)=>{
-    if(i>=20) return;
-    const ov=i>=16;
-    steps.push({line:LA.GETS, chip:i, ops:[{op:'byte',region:ov?'granted':'buffer',index:ov?i-16:i,value:b,cls:ov?'hit':'own'}],
-      desc: !ov?`gets() takes the next character from stdin and copies ${b===0?'the \\0 terminator':`‘${CHR(b)}’ (0x${b.toString(16)})`} into buffer[${i}]. No bounds check — nothing stops it at buffer[15].`:`buffer is full — byte ${i} overflows into granted, byte ${i-16}!`});
-  });
-  if(bytes.length>20) steps.push({line:LA.GETS, chip:20, desc:'gets() also writes the \\0 terminator at byte 20 — one byte past granted, outside the area modeled here.'});
+  steps.push(fillStep('A',bytes,LA.GETS,'hit')); if(bytes.length>LIMIT) return endFault(steps);
   const matched=payload==='letmein';
   steps.push({line:LA.TYPED, lab:'prints what %s finds in buffer', print:'You typed: '+payload+'\n', desc:`printf("%s") walks memory from buffer until it finds a \\0 and prints every byte on the way.`+(payload.length>16?' Here that runs past the end of buffer and into granted.':'')});
   steps.push({line:LA.IFCMP, tgtRegion:'buffer', lab:'strcmp reads buffer until \\0', desc:`strcmp(buffer,"letmein") ${matched?'matches':'does not match'}.`});
@@ -349,6 +366,7 @@ function buildStepsA(payload){
     steps.push({line:LA.DENY1, desc:'First message printed.', print:'Incorrect password\n'});
     steps.push({line:LA.DENY2, desc:'Second message printed.', print:'Access denied.\n'});
   }
+  if(bytes.length>24){ steps.push({line:LA.FEND, desc:`check_password() returns, but the saved return address just above granted was overwritten by input bytes 24–27. ‘ret’ jumps to ${hex8(fromLE([24,25,26,27].map(k=>bytes[k]||0)))}, which is not mapped code.`, flow:{active:'fb-branch-2',taken:'fb-branch-2',cls:'crash'}, status:'RET overwritten → crash', print:'Segmentation fault (core dumped)\n'}); return endFault(steps); }
   steps.push({line:LA.FEND, desc:'check_password() returns.'});
   steps.push({line:LA.CALLFN, desc:'Back in main() after the call.', flow:{active:'fb-main'}});
   steps.push({line:LA.RET, desc:'main() returns 0 — program exits.'});
@@ -366,13 +384,7 @@ function buildStepsB(len, fillChar, redirect){
   steps.push({line:LB.BUF, desc:'buffer[16] allocated (uninitialized ??). Order: buffer, then SFP, then RET.', ops:[{op:'alloc',region:'buffer',size:16}]});
   steps.push({line:LB.PROMPT, desc:'Prompt printed.', print:'Enter input: '});
   steps.push({line:LB.GETS, tgtRegion:'buffer', print:escB(bytes)+'\n', lab:'buffer = 0xbffff7a0', desc:'gets(buffer) reads the input from stdin and stores each byte at the next address, buffer[0], buffer[1], … It never checks the buffer’s size.'});
-  bytes.forEach((b,i)=>{
-    const region=i<16?'buffer':i<20?'sfp':'ret';
-    const ix=i<16?i:i<20?i-16:i-20;
-    const label= region==='buffer'?`gets() writes byte ${i} into buffer[${i}].`: region==='sfp'?`buffer full — byte ${i} overflows into SFP, byte ${ix}.`:`SFP full too — byte ${i} overflows into RET, byte ${ix}! This is the return address.`;
-    const cls = region==='buffer'?'own':region==='sfp'?'sfpw':(redirect && i>=20 ? 'legit':'hit');
-    steps.push({line:LB.GETS, chip:i, ops:[{op:'byte',region,index:ix,value:b,cls}], desc:label});
-  });
+  steps.push(fillStep('B',bytes,LB.GETS,redirect&&len>=20?'legit':'hit')); if(bytes.length>LIMIT) return endFault(steps);
   steps.push({line:LB.TYPED, lab:'prints what %s finds in buffer', print:'You typed: '+escB(upTo0(bytes))+'\n', desc:`printf("%s") walks memory from buffer until it finds a \\0 and prints every byte on the way.`+(len>16?' Here that runs past the end of buffer, into SFP and RET.':'')});
   steps.push({line:LB.FEND, desc:"Function epilogue: ‘leave’ restores ESP/EBP, discarding SFP.", ops:[0,1,2,3].map(k=>({op:'byte',region:'sfp',index:k,value:0,cls:'alloc'}))});
   const base=toLE(RET_MAIN,4);
@@ -400,7 +412,7 @@ function buildStepsB(len, fillChar, redirect){
 /* ---- arrow: code line -> thing about to change ---- */
 function renderChips(a){
   const el=$('stdin'); el.innerHTML='<b>stdin → gets(buffer)</b>';
-  inputBytes.forEach((v,i)=>{const d=document.createElement('span'); d.className='chip'+(i===a?' cur':i<a?' done':''); d.textContent=chipTxt(v); d.dataset.tip=`byte ${i}: 0x${v.toString(16).padStart(2,'0')} (${v})`; el.appendChild(d);});
+  inputBytes.forEach((v,i)=>{const d=document.createElement('span'); d.className='chip'+(i===a?' cur':i<a?' done':'')+(i>=16?(current==='B'&&i<20?' sf':' ov'):''); d.textContent=chipTxt(v); d.dataset.tip=`byte ${i}: 0x${v.toString(16).padStart(2,'0')} (${v})`; el.appendChild(d);});
   if(!inputBytes.length) el.append(' (no input bytes)');
 }
 function renderVars(){
@@ -462,7 +474,7 @@ function draw(anim){
   if(anim){
     hide(); const len=p.getTotalLength();
     p.style.transition='none'; p.style.strokeDasharray=len; p.style.strokeDashoffset=len; p.getBoundingClientRect();
-    p.style.transition='stroke-dashoffset .8s ease'; p.style.strokeDashoffset=0;
+    p.style.transition='stroke-dashoffset .25s ease-out'; p.style.strokeDashoffset=0;
   } else { p.style.transition='none'; p.style.strokeDasharray='none'; p.style.strokeDashoffset=0; }
   parts.forEach(e=>e.classList.add('show')); drawData(A,S,anim);
 }
@@ -498,12 +510,16 @@ function preview(s){
   draw(true);
 }
 function commit(s){
-  let cur=null;
-  (s.ops||[]).forEach(op=>{
+  let cur=null, fresh=null;
+  (s.ops||[]).forEach((op,n)=>{
     if(op.op==='alloc'){ for(let i=0;i<op.size;i++) mem[op.region][i]={v:null,cls:'alloc'}; }
-    else { mem[op.region][op.index]={v:op.value,cls:op.cls}; cur={region:op.region,index:op.index}; }
+    else { mem[op.region][op.index]={v:op.value,cls:op.cls}; if(s.fill){(fresh=fresh||{})[op.region+':'+op.index]=n;} else cur={region:op.region,index:op.index}; }
   });
-  renderMem(cur);
+  renderMem(cur,fresh,s.fill?Math.min(45,1100/Math.max(1,s.ops.length)):0);
+  if(s.fill){ const o=$('ovb'),g=$('gapBot');
+    if(s.over>0){o.hidden=false;o.textContent='⚠ Overflow: '+s.over+' bytes written past the end of buffer[16] → '+s.parts+'.';} else o.hidden=true;
+    if(s.fault){g.classList.add('seg');g.textContent='⛔ next byte at '+hex8(BASE+8+LIMIT)+' is outside the mapped stack → SIGSEGV';}
+    else if(s.beyond>0){g.classList.add('seg');g.textContent='⋮  '+s.beyond+' more bytes overwritten in the caller’s frames  ⋮';} }
   renderVars();
   if(s.print) $('console').textContent += s.print;
   if(s.status) $('statusline').textContent = s.status;
@@ -517,12 +533,12 @@ function stepForward(fast){
   if(idx>=steps.length-1){stopPlay();return;}
   idx++; const s=steps[idx]; preview(s);
   const go=()=>{pend=null;commit(s);};
-  pend={t:setTimeout(go,fast?900:Math.min(900,pace()*0.45)), fn:()=>commit(s)};
+  pend={t:setTimeout(go,fast?280:Math.min(280,pace()*0.45)), fn:()=>commit(s)};
   $('step').disabled=idx>=steps.length-1;
 }
 function sched(){
   if(idx>=steps.length-1){stopPlay();return;}
-  const s=steps[idx]||{}, d=pace()*((s.flow&&s.flow.taken)||s.status?1.8:1), b=$('barfill');
+  const s=steps[idx]||{}, d=pace()*((s.flow&&s.flow.taken)||s.status?1.8:1)+(s.fill?Math.min(1300,(s.ops||[]).length*40):0), b=$('barfill');
   b.style.animation='none'; void b.offsetWidth; b.style.animation=`fill ${d}ms linear forwards`;
   timer=setTimeout(()=>{try{stepForward();}catch(e){console.error(e);} sched();},d);
 }
@@ -551,23 +567,17 @@ function switchMode(m){
 function updateLenLabel(){
   const v=+$('len').value;
   $('lenLabel').textContent=v;
-  $('regionLabel').textContent = v<16?'(inside buffer)':v<20?'(reaches into SFP)':'(reaches into RET!)';
+  $('regionLabel').textContent = v<=16?'(inside buffer)':v<20?'(reaches into SFP)':v<24?'(reaches into RET!)':v<=LIMIT?'(past RET, into caller data)':'(runs off the stack → segfault!)';
 }
 function updatePace(){
-  const s=pace()/1000;
-  $('paceline').textContent=s===0?'Instant: Run all finishes every step in one click and shows the finished result. Drag right to watch it play instead.':`${s} s per step — the arrow shows first, then the memory changes. Step ▶ is always one step at a time.`;
+  $('paceline').textContent=`${pace()/1000} s per step. The arrow shows first, then memory changes. Step ▶ is always one step at a time.`;
 }
 $('modeA').addEventListener('click', ()=>switchMode('A'));
 $('modeB').addEventListener('click', ()=>switchMode('B'));
 function runAll(){
   stopPlay(); flush();
   if(idx<0||idx>=steps.length-1) rebuild();
-  if(pace()===0){
-    while(idx<steps.length-1){ idx++; commit(steps[idx]); }
-    chipPos=999; preview(steps[idx]);
-    $('desc').innerHTML=gloss(steps[idx].desc+' (Ran all '+steps.length+' steps. Press Reset ↺, then Step ▶ to go through it slowly.)');
-    $('step').disabled=true;
-  } else startPlay();
+  startPlay();
 }
 $('run').addEventListener('click', runAll);
 $('step').addEventListener('click', ()=>{stopPlay(); if(idx<0) rebuild(); stepForward(true);});
