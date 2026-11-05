@@ -156,6 +156,10 @@
   .sc .sw{font-size:.76rem;color:var(--muted);line-height:1.45;margin-top:5px;}
   .why{margin-top:12px;font-size:.88rem;line-height:1.55;padding:10px 12px;border-left:3px solid var(--sfp);background:var(--sfp-bg);border-radius:0 8px 8px 0;}
   .why b{display:block;margin-bottom:3px;}
+  details.acc{margin-top:12px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg);}
+  details.acc summary{cursor:pointer;color:var(--accent);font-size:.85rem;font-weight:600;}
+  details.acc[open] summary{margin-bottom:6px;}
+  details.acc .hint{margin:0 0 8px;}
 </style>
 </head>
 <body>
@@ -174,8 +178,7 @@
     <div id="controlsA">
       <label for="payload">Password attempt passed into gets(buffer)</label>
       <input id="payload" type="text" value="" maxlength="120" autocomplete="off" spellcheck="false" placeholder="enter a password…">
-      <label style="margin-top:12px;">Scenarios: load one, press Run all, and the result and reason are recorded here</label>
-      <div class="scen" id="scen"></div>
+      
     </div>
     <div id="controlsB" style="display:none;">
       <p class="hint" style="margin:0 0 8px;">Scenario: a door lock reads a password, and its firmware hides a <span class="tt" tabindex="0" data-tip="A universal password built into the firmware so police can unlock any door. Normal code never calls it, which is exactly what makes it a good target.">backdoor_password()</span>. Overflow the input to jump straight to it without knowing any real password.</p>
@@ -207,7 +210,8 @@
     <div class="paceline" id="paceline"></div>
     <div class="bar"><i id="barfill"></i></div>
     <div class="desc" id="desc">Pick a mode, edit the value, then hit Run.</div>
-    <div class="why" id="why"><b>Why this happened</b><span id="whyText">Run to the end and the reason shows here.</span></div>
+    <div class="why" id="why"><b>Why this happened</b><span id="whyText">Press Step ▶ or Run all. The reason for each step shows here.</span></div>
+    <details class="acc" id="scenBox"><summary id="scenSum">Scenarios</summary><p class="hint">Load one, then press Run all. Each result and its reason is recorded here.</p><div class="scen" id="scen"></div></details>
   </div>
 
   <div class="colR" id="colR">
@@ -336,9 +340,9 @@ function reveal(list){ (list||[]).forEach(k=>{
 }); }
 function preSteps(){ if(spaceBuilt) return [];
   return [
-  {line:null, pre:1, reveal:['gaps'], desc:'The program starts. Before any code runs, the OS builds the process’s address space: a huge range of addresses, almost all of it empty or reserved. The two ⋮ bands stand for everything before and after the small slice we zoom in on.'},
-  {line:null, pre:1, reveal:['cells'], desc:'The stack segment is mapped. Here it is as bytes: one box per byte, with its address underneath. Lower addresses are at the top, and the stack grows toward them. Nothing in these boxes belongs to our program yet.'},
-  {line:null, pre:1, last:1, reveal:['lo','hi'], desc:'The dashed boxes are reserved: space below for later function calls and space above for the callers. Their bytes are leftovers. Our code is about to claim a piece in between.'}]; }
+  {line:null, pre:1, reveal:['gaps'], why:'A program cannot run until the OS gives it memory, so this happens first, long before main().', desc:'The program starts. Before any code runs, the OS builds the process’s address space: a huge range of addresses, almost all of it empty or reserved. The two ⋮ bands stand for everything before and after the small slice we zoom in on.'},
+  {line:null, pre:1, reveal:['cells'], why:'The stack is where each function keeps its local variables and the address to return to. It has to exist before the first function can run.', desc:'The stack segment is mapped. Here it is as bytes: one box per byte, with its address underneath. Lower addresses are at the top, and the stack grows toward them. Nothing in these boxes belongs to our program yet.'},
+  {line:null, pre:1, last:1, reveal:['lo','hi'], why:'Memory outside our function’s frame is not ours, but nothing stops a buggy write from reaching it. Seeing it first makes the overflow visible later.', desc:'The dashed boxes are reserved: space below for later function calls and space above for the callers. Their bytes are leftovers. Our code is about to claim a piece in between.'}]; }
 function endFault(st){st.push({line:null,desc:'The process was killed by SIGSEGV. Nothing after that point ran. Change the input and rebuild to try again.'});return st;}
 function fillStep(m,bytes,line,retCls){
   const names=m==='A'?[['granted',4]]:[['SFP',4],['RET',4]],
@@ -481,10 +485,12 @@ function draw(anim){
   const S=$('split').getBoundingClientRect(), L=$('colL').getBoundingClientRect(), R=$('colR').getBoundingClientRect();
   if(!ln||!tg||R.left<L.right-10) return hide();
   const c=$('code').getBoundingClientRect(), a=ln.getBoundingClientRect(), t=tg.getBoundingClientRect();
-  /* tip stops 11px above the block; the arrow lands at a fixed ~50° slope so the end is a gentle glide, not a hook */
-  const x1=c.right-8-S.left, y1=a.top+a.height/2-S.top, ex=t.left+t.width/2-S.left, ey=t.top-11-S.top;
-  const ux=.64, uy=.77, bx=ex-9*ux, by=ey-9*uy, K=Math.min(90,Math.max(50,Math.abs(bx-x1)*.4));
-  const c1x=x1+Math.max(60,(bx-x1)/2), c2x=bx-K*ux, c2y=by-K*uy, col=`var(${A.color})`;
+  /* arrow glides in from the left and stops just short of the block's left edge, so it never lands on top of other boxes.
+     Flow boxes (main() -> fn() -> ...) have neighbours on their left, so those keep a gentle diagonal from above. */
+  const top=tg.classList.contains('fbox'), x1=c.right-8-S.left, y1=a.top+a.height/2-S.top;
+  const ex=top?t.left+t.width/2-S.left:t.left-7-S.left, ey=top?t.top-11-S.top:t.top+Math.min(t.height/2,30)-S.top;
+  const ux=top?.64:1, uy=top?.77:0, bx=ex-9*ux, by=ey-9*uy, K=top?Math.min(90,Math.max(50,Math.abs(bx-x1)*.4)):Math.max(18,(bx-x1)/2);
+  const c1x=top?x1+Math.max(60,(bx-x1)/2):x1+K, c2x=bx-K*ux, c2y=by-K*uy, col=`var(${A.color})`;
   p.setAttribute('d',`M${x1} ${y1}C${c1x} ${y1} ${c2x} ${c2y} ${bx} ${by}`);
   p.style.stroke=col; $('ah').style.fill=col; $('as').style.fill=col; $('alr').style.stroke=col;
   $('ah').setAttribute('points',`${ex},${ey} ${bx+uy*6},${by-ux*6} ${bx-uy*6},${by+ux*6}`);
@@ -518,7 +524,7 @@ function drawData(A,S,anim){
   ds.forEach(e=>e.classList.add('show'));
 }
 function preview(s){
-  reveal(s.reveal); if(s.last) spaceBuilt=true; if(idx===steps.length-1) showWhy();
+  reveal(s.reveal); if(s.last) spaceBuilt=true; $('whyText').textContent=s.why||''; if(idx===steps.length-1) showWhy();
   document.querySelectorAll('.line.active').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.tgt').forEach(e=>e.classList.remove('tgt'));
   if(s.line!=null) $('line-'+s.line)?.classList.add('active');
@@ -572,6 +578,7 @@ function rebuild(){
   stopPlay(); if(pend){clearTimeout(pend.t);pend=null;}
   steps = current==='A' ? buildStepsA($('payload').value)
                          : buildStepsB(+$('len').value, $('fill').value, $('redirect').checked);
+  steps.forEach(x=>{ if(!x.why) x.why=whyOf(x); });
   idx=-1; lastArrow=null; draw(false);
   document.querySelectorAll('.tgt').forEach(e=>e.classList.remove('tgt'));
   renderCode(); renderRegionsSkeleton(); renderMem(null); renderBranchesSkeleton(); chipPos=-1; renderVars(); renderChips(-1);
@@ -579,13 +586,14 @@ function rebuild(){
   $('desc').textContent='Ready. Press Step to go one step at a time, or Run all to watch it play at the speed set below.';
   $('stepcount').textContent=`Step 0 / ${steps.length}`;
   $('step').disabled=false;
-  $('whyText').textContent='Run to the end and the reason shows here.'; renderScen();
+  $('whyText').textContent='Press Step ▶ or Run all. The reason for each step shows here.'; renderScen();
 }
 function switchMode(m){
   current=m;
   $('modeA').classList.toggle('on', m==='A'); $('modeB').classList.toggle('on', m==='B');
   $('controlsA').style.display = m==='A'?'block':'none';
   $('controlsB').style.display = m==='B'?'block':'none';
+  $('scenBox').style.display = m==='A'?'block':'none';
   rebuild();
 }
 function updateLenLabel(){
@@ -703,18 +711,60 @@ function outcomeB(len,fc,redirect){
   if(num===RET_MAIN) return {k:'ok',t:'Returned normally',why:len<=16?`${len} bytes fit inside the 16-byte buffer, so SFP and RET were untouched and the function returned to main().`:`${len} bytes spilled into SFP but stopped before RET. The return address was intact, so the function returned to main(). (Damage to the saved frame pointer is not modeled here.)`};
   return {k:'crash',t:'Crash',why:`The input overwrote RET with ${hex8(num)}. ret popped that value and jumped to it, but it is not mapped code, so the CPU faulted: Segmentation fault.`};
 }
+function whyOf(s){
+  const A=current==='A', P=$('payload').value, n=P.length, f=s.flow&&s.flow.active, L=A?LA:LB, is=k=>s.line===L[k],
+    o=A?outcomeA(P):outcomeB(+$('len').value,$('fill').value,$('redirect').checked);
+  if(s.line==null) return o.why;
+  if(s.fill){ const W=s.ops.length+s.beyond;
+    return s.fault?`gets() keeps copying with no size check. The stack mapping ends ${LIMIT} bytes above buffer, so the write runs into unmapped memory and the CPU kills the program mid-copy.`
+      : s.over?`gets() has no size check. buffer holds 16 bytes but ${W} are being written, so the extra ${s.over} land on the next higher addresses: ${s.parts}.`
+      : `All ${W} bytes fit inside buffer’s 16, so gets() writes only inside it. Nothing else is touched.`; }
+  if(is('MAIN')) return 'Every C program starts at main(). The OS sets up the process, then jumps here.';
+  if(is('PROMPT')) return 'The program prints a prompt first so you know it wants input. printf writes to stdout, shown in the console panel.';
+  if(is('GETS')) return 'gets() takes no size, so it cannot know buffer holds only 16 bytes. It copies until Enter, so the length of your input, not the size of the buffer, decides how many bytes get written.';
+  if(is('TYPED')) return `printf("%s") prints from buffer until it finds a \\0. ${A?(n>15?'Your input overflowed, so it keeps reading straight through the bytes that spilled into granted.':'Your input fits, so it prints only what is in buffer.'):'If the input overflowed, the text is longer than buffer and the printout runs through the spilled bytes.'}`;
+  if(A){
+    if(is('CALLFN')) return f==='fb-fn'?'main() has one job: run the password check. A call pushes a new stack frame for check_password(), where the variables below will live.':'check_password() finished, so control returns to main(), its caller.';
+    if(is('FN')) return 'Calling a function reserves a fresh chunk of stack for it. Everything the function declares goes inside that chunk.';
+    if(is('BUF')) return 'char buffer[16] asks for 16 bytes. C does not clear them, so they hold leftovers (??) until something writes to them.';
+    if(is('VAR')) return s.ops&&s.ops[0]&&s.ops[0].op==='alloc'?'granted was declared after buffer, so in this layout it sits at the next higher addresses, directly in the path of an overflow from buffer.':'The = 0 makes the default answer “denied”. The whole check depends on only line 15 being able to change it.';
+    if(is('IFCMP')) return `strcmp compares buffer with "letmein". ${P==='letmein'?'Every character matches, so it returns 0 (equal).':'They differ, so it returns nonzero. It only reads the text in buffer and never looks at granted.'}`;
+    if(is('SET')) return 'The only line meant to set granted = 1, and it runs only when strcmp says the password matched.';
+    if(is('PRGR')) return 'This prints whatever 4 bytes granted holds right now. After an overflow, that is your input’s bytes read as one number.';
+    if(is('IFVAR')) return 'In C, if(x) is true for any nonzero value, not only 1. So 0 means denied and anything else, even garbage from an overflow, means allowed.';
+    if(is('GRANT_PRINT')) return o.k==='ok'?'granted was set by the correct password, so this branch is legitimate.':'granted is nonzero, so the if sends us down the access branch even though the password was wrong.';
+    if(is('CALLS')) return 'This is the protected action. It should only run for the right password.';
+    if(is('SECRET')||is('PRINT1')||is('PRINT2')) return 'Inside the secret function the program just prints its messages. It does not check who got here.';
+    if(is('SEND')) return 'secret_function() ends and control goes back to check_password().';
+    if(is('ELSE')) return 'granted is 0, so if(granted) is false and the else branch runs.';
+    if(is('DENY1')||is('DENY2')) return 'Nothing unusual here: the check worked as intended and the program says no.';
+    if(is('FEND')) return s.flow&&s.flow.cls==='crash'?'The overflow reached the saved return address. ret jumps to whatever those bytes say, and it is not real code.':'The function ends and its frame is discarded. The return address was not overwritten, so the return works.';
+    if(is('RET')) return 'main() has nothing left to do, so it returns 0 and the program exits cleanly.';
+  } else {
+    if(is('CALLFN')) return f==='fb-fn'?'CALL pushes the address of the next instruction in main() so the function knows where to come back to. That saved return address (RET) is what an attacker wants to overwrite.':'Control is back in main() because RET still held the original address.';
+    if(is('FN')) return 'The prologue saves the caller’s frame pointer (SFP) just below RET, then makes room for locals.';
+    if(is('BUF')) return 'Locals sit below SFP and RET at lower addresses, so a write running upward through buffer hits SFP first and then RET.';
+    if(is('FEND')) return s.flow?o.why:'leave undoes the prologue and discards SFP. The next instruction, ret, pops RET and jumps there.';
+    if(is('SECRET')) return 'The CPU is now running backdoor_password(). Nothing called it: the corrupted return address sent execution here.';
+    if(is('PRINT')) return 'It runs like any function. It has no idea it was reached illegitimately.';
+    if(is('SEND')) return 'backdoor_password() would return next, but the stack beneath it is corrupted, so the demo stops here.';
+    if(is('RESUME')) return 'The next statement in main() runs as normal because the return went where it was supposed to.';
+    if(is('RET')) return 'main() has nothing left to do, so it returns and the program exits cleanly.';
+  }
+  return '';
+}
 function showWhy(){
   const o=current==='A'?outcomeA($('payload').value):outcomeB(+$('len').value,$('fill').value,$('redirect').checked);
   $('whyText').textContent=o.why;
   if(current==='A'){ const sc=SCEN.find(x=>x.inp===$('payload').value); if(sc){ done[sc.id]=o; renderScen(); } }
 }
 function renderScen(){
-  const el=$('scen'); if(!el) return; const cur=$('payload').value; el.innerHTML='';
+  const el=$('scen'); if(!el) return; const cur=$('payload').value; el.innerHTML=''; $('scenSum').textContent=`Scenarios (${Object.keys(done).length} of ${SCEN.length} tried)`;
   SCEN.forEach(sc=>{ const r=done[sc.id], d=document.createElement('div'); d.className='sc'+(sc.inp===cur?' on':'');
     d.innerHTML=`<div class="hd"><button type="button" data-sc="${sc.id}">${sc.name}</button><span class="st${r&&BADK.has(r.k)?' bad':''}">${r?'✓ '+esc(r.t):'not tried'}</span></div>`+(r?`<div class="sw">${esc(r.why)}</div>`:'');
     el.appendChild(d); });
 }
-$('scen').addEventListener('click',e=>{ const b=e.target.closest('[data-sc]'); if(!b) return; $('payload').value=SCEN.find(x=>x.id===b.dataset.sc).inp; rebuild(); });
+$('scen').addEventListener('click',e=>{ const b=e.target.closest('[data-sc]'); if(!b) return; $('payload').value=SCEN.find(x=>x.id===b.dataset.sc).inp; rebuild(); $('run').scrollIntoView({behavior:'smooth',block:'center'}); });
 renderCode(); updateLenLabel(); updatePace(); rebuild();
 </script>
 </body>
