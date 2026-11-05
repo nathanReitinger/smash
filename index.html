@@ -24,12 +24,12 @@
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     padding:env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px);}
   .wrap{max-width:1180px;margin:0 auto;padding:22px 0 48px;}
-  .split{display:flex;gap:16px;align-items:flex-start;position:relative;flex-wrap:wrap;}
+  .split{display:flex;gap:16px 48px;align-items:flex-start;position:relative;flex-wrap:wrap;}
   .colL{flex:1 1 400px;min-width:320px;}
   .colR{flex:1 1 380px;min-width:300px;display:flex;flex-direction:column;}
   #arrowSvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6;}
   .ap{opacity:0;} .ap.show{opacity:.95;transition:opacity .12s;} .ap.late.show{transition-delay:.2s;}
-  #arrowPath{fill:none;stroke-width:3;stroke-linecap:round;}
+  #arrowPath{fill:none;stroke-width:4;stroke-linecap:round;}
   #alt{font-family:var(--mono);font-size:12px;fill:var(--text);text-anchor:middle;}
   #alr{fill:var(--panel);stroke-width:1.5;}
   .paceline{font-size:0.78rem;color:var(--muted);margin-top:6px;}
@@ -160,6 +160,12 @@
   details.acc summary{cursor:pointer;color:var(--accent);font-size:.85rem;font-weight:600;}
   details.acc[open] summary{margin-bottom:6px;}
   details.acc .hint{margin:0 0 8px;}
+  .cell.dead{opacity:.75;border-style:dashed;background:transparent;color:var(--muted);border-color:var(--border);}
+  .region.released h3::after{content:'released, bytes not erased';margin-left:8px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);}
+  #regions.ended .cell,#regions.ended .gap{opacity:.28;}
+  #regions.ended .region h3{opacity:.45;}
+  .endcard{order:-2;text-align:center;padding:14px 12px;margin-bottom:10px;border:2px solid var(--accent);border-radius:10px;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:1.05rem;}
+  .endcard small{display:block;font-weight:400;color:var(--text);font-size:.8rem;margin-top:4px;}
 </style>
 </head>
 <body>
@@ -247,7 +253,7 @@
   </div>
   <svg id="arrowSvg">
     <path id="arrowPath" class="ap"/>
-    <circle id="as" class="ap" r="5"/>
+    <circle id="as" class="ap" r="6"/>
     <polygon id="ah" class="ap late"/>
     <g id="alab" class="ap late"><rect id="alr" rx="5"/><text id="alt"></text></g>
     <path id="dataPath" class="dp"/><polygon id="dh" class="dp"/><g id="dlab" class="dp"><rect id="dlr" rx="5"/><text id="dlt"></text></g>
@@ -303,7 +309,7 @@ function renderCode(){
   MODES[current].code.forEach((t,i)=>{const d=document.createElement('div');d.className='line';d.id='line-'+i;const n=document.createElement('span');n.className='ln';n.textContent=i+1;d.appendChild(n);d.appendChild(document.createTextNode(t||'\u00A0'));el.appendChild(d);});
 }
 function renderRegionsSkeleton(){
-  const el=$('regions'); el.innerHTML=`<div class="gap top${spaceBuilt?'':' hide'}" data-gap="0">⋮  lower addresses — thousands more unused bytes  ⋮</div><div class="gap bot${spaceBuilt?'':' hide'}" id="gapBot" data-gap="1">⋮  higher addresses — caller’s frames, environment, kernel  ⋮</div>`; mem={}; let off=0; if(!spaceBuilt) el.insertAdjacentHTML('beforeend','<div class="emptynote" id="emptyNote">No address space yet. Press Step ▶ or Run all to build it.</div>');
+  const el=$('regions'); el.classList.remove('ended'); el.innerHTML=`<div class="gap top${spaceBuilt?'':' hide'}" data-gap="0">⋮  lower addresses — thousands more unused bytes  ⋮</div><div class="gap bot${spaceBuilt?'':' hide'}" id="gapBot" data-gap="1">⋮  higher addresses — caller’s frames, environment, kernel  ⋮</div>`; mem={}; let off=0; if(!spaceBuilt) el.insertAdjacentHTML('beforeend','<div class="emptynote" id="emptyNote">No address space yet. Press Step ▶ or Run all to build it.</div>');
   MODES[current].regions.forEach(r=>{
     mem[r.id]=Array(r.size).fill(null); r.addr=BASE+off; off+=r.size;
     const div=document.createElement('div'); div.className='region'+(spaceBuilt?'':' hide noname'); div.dataset.id=r.id; div.style.marginTop='8px';
@@ -343,7 +349,21 @@ function preSteps(){ if(spaceBuilt) return [];
   {line:null, pre:1, reveal:['gaps'], why:'A program cannot run until the OS gives it memory, so this happens first, long before main().', desc:'The program starts. Before any code runs, the OS builds the process’s address space: a huge range of addresses, almost all of it empty or reserved. The two ⋮ bands stand for everything before and after the small slice we zoom in on.'},
   {line:null, pre:1, reveal:['cells'], why:'The stack is where each function keeps its local variables and the address to return to. It has to exist before the first function can run.', desc:'The stack segment is mapped. Here it is as bytes: one box per byte, with its address underneath. Lower addresses are at the top, and the stack grows toward them. Nothing in these boxes belongs to our program yet.'},
   {line:null, pre:1, last:1, reveal:['lo','hi'], why:'Memory outside our function’s frame is not ours, but nothing stops a buggy write from reaching it. Seeing it first makes the overflow visible later.', desc:'The dashed boxes are reserved: space below for later function calls and space above for the callers. Their bytes are leftovers. Our code is about to claim a piece in between.'}]; }
-function endFault(st){st.push({line:null,desc:'The process was killed by SIGSEGV. Nothing after that point ran. Change the input and rebuild to try again.'});return st;}
+function endSteps(){
+  const A=current==='A', P=$('payload').value, len=+$('len').value, o=A?outcomeA(P):outcomeB(len,$('fill').value,$('redirect').checked),
+    crash=o.k==='segv'||o.k==='ret'||o.k==='crash', hij=o.k==='hijack', spill=A?P.length+1>20:len>24, out=[];
+  if(!crash&&!hij) out.push({line:null, flow:{active:null}, ops:[{op:'release'}],
+    why:'Returning from a function costs almost nothing: the CPU just moves the stack pointer back. It does not clear memory, which is why leftover data can leak into later calls and why overflow damage stays put.',
+    desc:'Wrap-up: the function returned, so its stack frame is released. The stack pointer moves back and these bytes are no longer in use, but nothing erases them. Everything written, overflow included, is still there until a later call overwrites it.'+(spill?' Bytes that spilled into the caller’s area stay corrupted.':'')});
+  out.push({line:null, flow:{active:null}, ops:[{op:'unmap'}], print:hij?'':crash?'[process killed by SIGSEGV, exit status 139]\n':'[process exited with status 0]\n',
+    why:crash?'A crash is the OS stopping a process that touched memory it should not have. Cleanup happens at the OS level, not inside the program.':hij?'The hijack worked because nothing checks RET before ret uses it. Once the process ends, the OS reclaims the memory either way.':'When a process ends, the OS frees every page it owned. Nothing from this run stays in memory after that.',
+    desc:crash?'The OS kills the process (SIGSEGV). Nothing unwinds: no function returns and nothing is cleaned up first. The OS unmaps the address space and the corrupted bytes disappear with it. A core dump, if enabled, would save a copy to disk for debugging.'
+      :hij?'The demo stops here. A real process would most likely crash when backdoor_password() tries to return, because the stack beneath it is corrupted. Either way, the OS finally unmaps the address space and takes the memory back.'
+      :'The process exits with status 0 and the OS unmaps its whole address space, taking the memory back. Even the leftover bytes are gone: the next program gets fresh, zeroed pages.'});
+  out.push({line:null, flow:{active:null}, endcard:o.t, desc:`END. Result: ${o.t}. The program has finished and its address space no longer exists. Change the input or open Scenarios to run it again.`});
+  return out;
+}
+function endFault(st){st.push({line:null,desc:'The process is killed by SIGSEGV. Nothing after that point runs.'},...endSteps());return st;}
 function fillStep(m,bytes,line,retCls){
   const names=m==='A'?[['granted',4]]:[['SFP',4],['RET',4]],
     L=[['buffer',16,'own'],...(m==='A'?[['granted',4,'hit']]:[['sfp',4,'sfpw'],['ret',4,retCls]]),['hi',16,'hit']],
@@ -394,7 +414,7 @@ function buildStepsA(payload){
   steps.push({line:LA.FEND, desc:'check_password() returns.'});
   steps.push({line:LA.CALLFN, desc:'Back in main() after the call.', flow:{active:'fb-main'}});
   steps.push({line:LA.RET, desc:'main() returns 0 — program exits.'});
-  steps.push({line:null, desc:'Done. Adjust input and rebuild.'});
+  steps.push(...endSteps());
   return steps;
 }
 
@@ -429,7 +449,7 @@ function buildStepsB(len, fillChar, redirect){
     steps.push({line:LB.FEND, desc:`‘ret’ pops ${hex} and jumps there — not mapped into this process’s memory.`, status:`RET currently points to: ${hex} — invalid, crash`, flow:{active:'fb-branch-2', taken:'fb-branch-2', cls:'crash'}});
     steps.push({line:null, desc:`The CPU faults fetching an instruction from ${hex}. This is the real, undefined-behavior consequence of an unbounded write — C gives you no protection against it.`, print:'Segmentation fault (core dumped)\n'});
   }
-  steps.push({line:null, desc:'Done. Adjust the controls and rebuild to try another scenario.'});
+  steps.push(...endSteps());
   return steps;
 }
 
@@ -477,6 +497,36 @@ function targetFor0(s){
   if(s.print) return {get:()=>$('console'), label:s.lab||'prints here', color:'--accent'};
   return null;
 }
+/* Pure helpers: score candidate routes by how much of them lies over obstacle boxes, then draw the best with rounded corners.
+   Overlap is penalized heavily, and any stretch of the route that strays outside the empty gutter between the two
+   columns is penalized too, so the arrow sticks to that open space instead of cutting across boxes or text. */
+function planRoute(x1,y1,T,obs,lanes,band){
+  const HL=26, G=9, V=16, tcx=(T.l+T.r)/2, tcy=T.t+Math.min((T.b-T.t)/2,30); let best=null;
+  const ov=(p,q)=>{ let o=0; const h=Math.abs(p[1]-q[1])<.5;
+    for(const [l,t,r,b] of obs){
+      if(h){ if(p[1]>t&&p[1]<b) o+=Math.max(0,Math.min(Math.max(p[0],q[0]),r)-Math.max(Math.min(p[0],q[0]),l)); }
+      else if(p[0]>l&&p[0]<r) o+=Math.max(0,Math.min(Math.max(p[1],q[1]),b)-Math.max(Math.min(p[1],q[1]),t)); }
+    return o; };
+  const away=(p,q)=>{ const lo=Math.min(p[0],q[0]), hi=Math.max(p[0],q[0]);
+    if(Math.abs(p[1]-q[1])>.5) return (p[0]<band[0]||p[0]>band[1])?Math.abs(p[1]-q[1]):0;
+    return (hi-lo)-Math.max(0,Math.min(hi,band[1])-Math.max(lo,band[0])); };
+  const tryR=(E,u,pts)=>{ const f=[...pts,E]; let o=0,a=0,len=0;
+    for(let i=1;i<f.length;i++){ o+=ov(f[i-1],f[i]); a+=away(f[i-1],f[i]); len+=Math.abs(f[i][0]-f[i-1][0])+Math.abs(f[i][1]-f[i-1][1]); }
+    const sc=o*40+a*.6+len*.05+(pts.length-3)*6+(u[0]===1?0:8); if(!best||sc<best.sc) best={sc,E,u,pts}; };
+  lanes.forEach(cx=>{
+    if(cx<T.l-G-HL-12) tryR([T.l-G,tcy],[1,0],[[x1,y1],[cx,y1],[cx,tcy],[T.l-G-HL,tcy]]);
+    let B=[tcx,T.t-G-HL]; tryR([tcx,T.t-G],[0,1],[[x1,y1],[cx,y1],[cx,B[1]-V],[tcx,B[1]-V],B]);
+    B=[tcx,T.b+G+HL]; tryR([tcx,T.b+G],[0,-1],[[x1,y1],[cx,y1],[cx,B[1]+V],[tcx,B[1]+V],B]);
+  });
+  return best;
+}
+function roundPath(pts,r){
+  const q=pts.filter((a,i)=>!i||Math.hypot(a[0]-pts[i-1][0],a[1]-pts[i-1][1])>.5);
+  let d=`M${q[0][0]} ${q[0][1]}`;
+  for(let i=1;i<q.length-1;i++){ const a=q[i-1], b=q[i], c=q[i+1], l1=Math.hypot(b[0]-a[0],b[1]-a[1]), l2=Math.hypot(c[0]-b[0],c[1]-b[1]), k=Math.min(r,l1/2,l2/2);
+    d+=`L${b[0]+(a[0]-b[0])/l1*k} ${b[1]+(a[1]-b[1])/l1*k}Q${b[0]} ${b[1]} ${b[0]+(c[0]-b[0])/l2*k} ${b[1]+(c[1]-b[1])/l2*k}`; }
+  return d+`L${q[q.length-1][0]} ${q[q.length-1][1]}`;
+}
 function draw(anim){
   const parts=document.querySelectorAll('.ap'), p=$('arrowPath'), A=lastArrow;
   const hide=()=>{parts.forEach(e=>e.classList.remove('show')); document.querySelectorAll('.dp').forEach(e=>e.classList.remove('show'));};
@@ -485,18 +535,33 @@ function draw(anim){
   const S=$('split').getBoundingClientRect(), L=$('colL').getBoundingClientRect(), R=$('colR').getBoundingClientRect();
   if(!ln||!tg||R.left<L.right-10) return hide();
   const c=$('code').getBoundingClientRect(), a=ln.getBoundingClientRect(), t=tg.getBoundingClientRect();
-  /* arrow glides in from the left and stops just short of the block's left edge, so it never lands on top of other boxes.
-     Flow boxes (main() -> fn() -> ...) have neighbours on their left, so those keep a gentle diagonal from above. */
-  const top=tg.classList.contains('fbox'), x1=c.right-8-S.left, y1=a.top+a.height/2-S.top;
-  const ex=top?t.left+t.width/2-S.left:t.left-7-S.left, ey=top?t.top-11-S.top:t.top+Math.min(t.height/2,30)-S.top;
-  const ux=top?.64:1, uy=top?.77:0, bx=ex-9*ux, by=ey-9*uy, K=top?Math.min(90,Math.max(50,Math.abs(bx-x1)*.4)):Math.max(18,(bx-x1)/2);
-  const c1x=top?x1+Math.max(60,(bx-x1)/2):x1+K, c2x=bx-K*ux, c2y=by-K*uy, col=`var(${A.color})`;
-  p.setAttribute('d',`M${x1} ${y1}C${c1x} ${y1} ${c2x} ${c2y} ${bx} ${by}`);
+  /* The arrow starts at the end of its code line. Candidate routes (arriving from the left, top or bottom, through several
+     vertical lanes in the gutter) are scored by how much of each lies over text or boxes; the least-overlapping one wins. */
+  const rg=document.createRange(), obs=[], own=[];
+  const box=(r,to)=>{ if(r.width>0&&r.height>0) to.push([r.left-S.left-3,r.top-S.top-3,r.right-S.left+3,r.bottom-S.top+3]); };
+  document.querySelectorAll('.line').forEach(e=>{ rg.selectNodeContents(e); box(rg.getBoundingClientRect(), e===ln?own:obs); });
+  document.querySelectorAll('.ph,.region h3').forEach(e=>{ rg.selectNodeContents(e); box(rg.getBoundingClientRect(), obs); });
+  document.querySelectorAll('.cell,.fbox,.chip,.gap,.vars,.statusline,.console,.desc,.why,.ovb,.emptynote,.endcard,button,input,label,summary,.stdin b').forEach(e=>box(e.getBoundingClientRect(),obs));
+  const x1=Math.min(own.length?own[0][2]+7:1e9,c.right-8-S.left), y1=a.top+a.height/2-S.top;
+  const lx0=c.right+4-S.left, lx1=R.left+10-S.left;
+  let lanes=[0,1,2,3,4,5,6,7].map(i=>lx0+i*(lx1-lx0)/7).filter(cx=>cx>x1+12); if(!lanes.length) lanes=[x1+20];
+  const route=planRoute(x1,y1,{l:t.left-S.left,r:t.right-S.left,t:t.top-S.top,b:t.bottom-S.top},obs,lanes,[lx0,lx1]);
+  if(!route) return hide();
+  const P=route.pts, [bx,by]=P[P.length-1], [ux,uy]=route.u, [ex,ey]=route.E, col=`var(${A.color})`, HW=14;
+  p.setAttribute('d',roundPath(P,14));
   p.style.stroke=col; $('ah').style.fill=col; $('as').style.fill=col; $('alr').style.stroke=col;
-  $('ah').setAttribute('points',`${ex},${ey} ${bx+uy*6},${by-ux*6} ${bx-uy*6},${by+ux*6}`);
+  $('ah').setAttribute('points',`${ex},${ey} ${bx+uy*HW},${by-ux*HW} ${bx-uy*HW},${by+ux*HW}`);
   $('as').setAttribute('cx',x1); $('as').setAttribute('cy',y1);
-  const lt=$('alt'); lt.textContent=A.label;
-  lt.setAttribute('x',(x1+3*c1x+3*c2x+bx)/8); lt.setAttribute('y',(4*y1+3*c2y+by)/8);
+  /* label: slide it along the route to the spot where it covers the least */
+  const lt=$('alt'); lt.textContent=A.label; const b0=lt.getBBox(), LW=b0.width+14, LH=b0.height+6, tot=p.getTotalLength();
+  const all=obs.concat(own,[[x1-9,y1-9,x1+9,y1+9],[Math.min(bx,ex)-HW*Math.abs(uy)-3,Math.min(by,ey)-HW*Math.abs(ux)-3,Math.max(bx,ex)+HW*Math.abs(uy)+3,Math.max(by,ey)+HW*Math.abs(ux)+3]]);
+  let bl=null;
+  for(let i=1;i<40;i++){ const q=p.getPointAtLength(tot*i/40);
+    for(const dy of [0,-(LH/2+10),LH/2+10,-(LH+20),LH+20]) for(const dx of [0,-LW/2,LW/2]){
+      const l0=q.x+dx-LW/2, t0=q.y+dy-LH/2; let o=0;
+      for(const [l,tp,r2,bt] of all) o+=Math.max(0,Math.min(l0+LW,r2)-Math.max(l0,l))*Math.max(0,Math.min(t0+LH,bt)-Math.max(t0,tp));
+      o+=Math.abs(i-20)*2+(dy?30:0)+Math.abs(dx)*.15; if(!bl||o<bl.o) bl={o,x:q.x+dx,y:q.y+dy}; } }
+  lt.setAttribute('x',bl.x); lt.setAttribute('y',bl.y);
   const bb=lt.getBBox(), r=$('alr');
   r.setAttribute('x',bb.x-7); r.setAttribute('y',bb.y-3); r.setAttribute('width',bb.width+14); r.setAttribute('height',bb.height+6);
   if(anim){
@@ -542,6 +607,8 @@ function commit(s){
   let cur=null, fresh=null;
   (s.ops||[]).forEach((op,n)=>{
     if(op.op==='alloc'){ for(let i=0;i<op.size;i++) mem[op.region][i]={v:null,cls:'alloc'}; }
+    else if(op.op==='release'){ MODES[current].regions.forEach(r=>{ if(r.free) return; mem[r.id].forEach(c=>{ if(c) c.cls='dead'; }); document.querySelector(`#regions .region[data-id="${r.id}"]`)?.classList.add('released'); }); }
+    else if(op.op==='unmap'){ $('regions').classList.add('ended'); }
     else { mem[op.region][op.index]={v:op.value,cls:op.cls}; if(s.fill){(fresh=fresh||{})[op.region+':'+op.index]=n;} else cur={region:op.region,index:op.index}; }
   });
   renderMem(cur,fresh,s.fill?Math.min(45,1100/Math.max(1,s.ops.length)):0);
@@ -551,6 +618,7 @@ function commit(s){
     else if(s.beyond>0){g.classList.add('seg');g.textContent='⋮  '+s.beyond+' more bytes overwritten in the caller’s frames  ⋮';} }
   renderVars();
   if(s.print) $('console').textContent += s.print;
+  if(s.endcard){ const e=document.createElement('div'); e.className='endcard'; e.innerHTML='■ END<small>'+esc(s.endcard)+'. Address space returned to the OS.</small>'; $('regions').appendChild(e); $('run').textContent='Run again ↻'; }
   if(s.status) $('statusline').textContent = s.status;
   if(s.flow){ setActive(s.flow.active); if(s.flow.taken) setTaken(s.flow.taken, s.flow.cls); }
   draw(false);
@@ -585,7 +653,7 @@ function rebuild(){
   $('console').textContent='$ ./a.out\n'; $('statusline').textContent='—';
   $('desc').textContent='Ready. Press Step to go one step at a time, or Run all to watch it play at the speed set below.';
   $('stepcount').textContent=`Step 0 / ${steps.length}`;
-  $('step').disabled=false;
+  $('step').disabled=false; $('run').textContent='Run all ▶';
   $('whyText').textContent='Press Step ▶ or Run all. The reason for each step shows here.'; renderScen();
 }
 function switchMode(m){
