@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stack Smash Stepper: Two Modes</title>
+<meta name="description" content="Step through a classic stack buffer overflow one byte at a time: a basic overflow and a return-address overwrite.">
+<style>
+  :root{
+    --bg:#f7f7f9;--panel:#fff;--text:#1a1a1a;--muted:#6b6b76;--border:#e1e1e6;
+    --buffer:#3b82f6;--buffer-bg:#dbeafe;--overflow:#dc2626;--overflow-bg:#fee2e2;
+    --sfp:#d97706;--sfp-bg:#fef3c7;--accent:#7c3aed;--accent-bg:#ede9fe;
+    --mono:'SFMono-Regular',Consolas,Menlo,monospace;color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --bg:#0f0f12;--panel:#18181d;--text:#e8e8ea;--muted:#9a9aa5;--border:#2b2b33;
+    --buffer:#60a5fa;--buffer-bg:#1e3a5f;--overflow:#f87171;--overflow-bg:#3a1414;
+    --sfp:#fbbf24;--sfp-bg:#3a2a0a;--accent:#a78bfa;--accent-bg:#2a2340;color-scheme:dark; } }
+  :root[data-theme="dark"]{
+    --bg:#0f0f12;--panel:#18181d;--text:#e8e8ea;--muted:#9a9aa5;--border:#2b2b33;
+    --buffer:#60a5fa;--buffer-bg:#1e3a5f;--overflow:#f87171;--overflow-bg:#3a1414;
+    --sfp:#fbbf24;--sfp-bg:#3a2a0a;--accent:#a78bfa;--accent-bg:#2a2340;color-scheme:dark; }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    padding:env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px);}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 0 48px;}
+  .split{display:flex;gap:16px;align-items:flex-start;position:relative;flex-wrap:wrap;}
+  .colL{flex:1 1 400px;min-width:320px;}
+  .colR{flex:1 1 380px;min-width:300px;display:flex;flex-direction:column;}
+  #arrowSvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6;}
+  .ap{opacity:0;} .ap.show{opacity:.95;transition:opacity .2s;} .ap.late.show{transition-delay:.7s;}
+  #arrowPath{fill:none;stroke-width:3;stroke-linecap:round;}
+  #alt{font-family:var(--mono);font-size:12px;fill:var(--text);text-anchor:middle;}
+  #alr{fill:var(--panel);stroke-width:1.5;}
+  .paceline{font-size:0.78rem;color:var(--muted);margin-top:6px;}
+  .bar{height:4px;background:var(--border);border-radius:2px;margin-top:10px;overflow:hidden;}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);}
+  @keyframes fill{from{width:0}to{width:100%}}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--accent)}50%{box-shadow:0 0 0 6px transparent}}
+  @keyframes pop{0%{transform:scale(1.45)}100%{transform:scale(1.05)}}
+  .tgt{outline:2px dashed var(--accent);outline-offset:2px;animation:pulse 1.2s infinite;}
+  h1{font-size:1.25rem;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:0.85rem;margin:0 0 16px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;}
+  label{font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;}
+  input[type=text]{font-family:var(--mono);font-size:0.9rem;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);}
+  input[type=text]::placeholder{color:var(--muted);opacity:1;}
+  #payload{width:100%;} #fill{width:60px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center;}
+  button{font-family:inherit;font-size:0.8rem;padding:7px 13px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;}
+  button:hover{border-color:var(--accent);color:var(--accent);}
+  button.primary{background:var(--accent-bg);color:var(--accent);border-color:var(--accent);}
+  button.mode{padding:9px 16px;font-weight:600;}
+  button.mode.on{background:var(--accent-bg);color:var(--accent);border-color:var(--accent);}
+  button:disabled{opacity:0.4;cursor:default;}
+  .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .fbox{padding:7px 12px;border:2px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:0.76rem;color:var(--muted);transition:all .2s;}
+  .fbox.active{border-color:var(--accent);background:var(--accent-bg);color:var(--accent);}
+  .fbox.normal{border-color:var(--buffer);background:var(--buffer-bg);color:var(--buffer);}
+  .fbox.hijack{border-color:var(--accent);background:var(--accent-bg);color:var(--accent);}
+  .fbox.crash{border-color:var(--overflow);background:var(--overflow-bg);color:var(--overflow);}
+  .arrow{color:var(--muted);font-size:1rem;}
+  .branches{display:flex;flex-direction:column;gap:5px;}
+  .code{font-family:var(--mono);font-size:0.82rem;line-height:1.6;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 0;overflow-x:auto;}
+  .line{padding:1px 14px 1px 24px;white-space:pre;border-left:3px solid transparent;position:relative;transition:background-color .18s ease,border-color .18s ease;}
+  .line.active{background:var(--accent-bg);border-left-color:var(--accent);color:var(--accent);font-weight:600;}
+  .line.active::before{content:'▶';position:absolute;left:7px;font-size:0.62rem;}
+  .region h3{font-size:0.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 6px;}
+  .cells{display:flex;gap:4px;flex-wrap:nowrap;}
+  .cell{flex:0 0 calc((100% - 60px)/16);height:40px;border-radius:6px;border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.58rem;background:var(--panel);color:var(--muted);opacity:.4;transition:all .15s;}
+  .cell.alloc{opacity:1;}
+  .cell.own{opacity:1;background:var(--buffer-bg);border-color:var(--buffer);color:var(--buffer);}
+  .cell.sfpw{opacity:1;background:var(--sfp-bg);border-color:var(--sfp);color:var(--sfp);}
+  .cell.hit{opacity:1;background:var(--overflow-bg);border-color:var(--overflow);color:var(--overflow);transform:scale(1.05);}
+  .cell.legit{opacity:1;background:var(--accent-bg);border-color:var(--accent);color:var(--accent);transform:scale(1.05);}
+  .cell.current{outline:2px solid var(--text);box-shadow:0 0 0 3px var(--accent-bg);animation:pop .7s ease-out;}
+  .cells{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;}
+  .cell{flex:none;height:auto;min-height:60px;padding:4px 0 3px;opacity:1;gap:1px;}
+  .cell.empty{opacity:.6;}
+  .cell .ch{font-size:.95rem;font-weight:700;line-height:1.1;}
+  .cell .hx{font-size:.64rem;}
+  .cell .ad{font-size:.52rem;opacity:.7;border-top:1px solid currentColor;margin-top:3px;padding-top:1px;width:78%;text-align:center;}
+  .ln{display:inline-block;width:2em;margin-right:12px;text-align:right;font-weight:400;opacity:.6;user-select:none;}
+  .line.active .ln{opacity:1;}
+  .rg{font-weight:400;text-transform:none;letter-spacing:0;font-family:var(--mono);margin-left:6px;color:var(--text);}
+  .stdin{display:flex;gap:3px;flex-wrap:wrap;align-items:center;font-family:var(--mono);font-size:.78rem;min-height:30px;}
+  .stdin b{font-size:.68rem;color:var(--muted);font-weight:400;margin-right:6px;}
+  .chip{min-width:24px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;text-align:center;color:var(--muted);}
+  .chip.done{color:var(--text);border-color:var(--buffer);}
+  .chip.cur{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);font-weight:700;animation:pulse 1.2s infinite;}
+  .vars{font-family:var(--mono);font-size:.78rem;line-height:1.7;margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);white-space:pre-wrap;overflow-x:auto;}
+  .cell.free{opacity:.5;border-style:dashed;background:transparent;}
+  .cell .ch{font-size:1.1rem;}
+  .gap{display:block;text-align:center;cursor:help;color:var(--muted);font-size:.72rem;padding:6px;border:1px dashed var(--border);border-radius:6px;margin:6px 0;}
+  #regions{display:flex;flex-direction:column;}
+  .gap.top{order:-1;}
+  .rg{cursor:help;border-bottom:1px dotted var(--muted);}
+  .explain{margin-top:10px;font-size:.8rem;line-height:1.55;color:var(--muted);}
+  .explain summary{cursor:pointer;color:var(--accent);}
+  .explain p{margin:6px 0;}
+  .explain code{font-family:var(--mono);color:var(--text);}
+  .gap.bot{order:99;}
+  .console{min-height:8em;border:1px solid var(--border);}
+  .console::after{content:'▮';margin-left:2px;animation:blink 1s steps(2) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .pop{display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px;}
+  .pop.open{display:flex;}
+  .popcard{position:relative;max-width:500px;width:100%;max-height:85vh;overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:18px 20px;font-size:.88rem;line-height:1.55;box-shadow:0 10px 40px rgba(0,0,0,.35);}
+  .popcard h4{margin:0 24px 10px 0;font-size:1rem;}
+  .popcard p{margin:8px 0;}
+  .popcard hr{border:0;border-top:1px solid var(--border);margin:12px 0;}
+  .popcard code,.ptab td+td{font-family:var(--mono);}
+  #popx{position:absolute;top:8px;right:8px;padding:4px 9px;}
+  .ptab{width:100%;border-collapse:collapse;margin:6px 0;font-size:.82rem;}
+  .ptab td{padding:5px 6px;border-bottom:1px solid var(--border);}
+  .cell,.rg,.gap{cursor:pointer;}
+  .helpbtn{margin-top:10px;}
+  .dp{opacity:0;} .dp.show{opacity:.95;transition:opacity .25s .5s;}
+  #dataPath{fill:none;stroke-width:3;stroke-dasharray:7 5;stroke-linecap:round;}
+  #dlt{font-family:var(--mono);font-size:12px;fill:var(--text);text-anchor:middle;}
+  #dlr{fill:var(--panel);stroke-width:1.5;}
+  #payload,#fill{background:#fff3b0;color:#1a1a1a;border:2px solid #d9a400;font-weight:600;}
+  #payload{font-size:1rem;padding:10px 12px;}
+  #payload::placeholder{color:#7a6a2a;}
+  #payload:placeholder-shown{border-color:var(--overflow);}
+  #payload:focus,#fill:focus{outline:3px solid var(--accent);}
+  .statusline{font-family:var(--mono);font-size:0.8rem;margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);}
+  .console{font-family:var(--mono);font-size:0.82rem;background:#0b0b0f;color:#9fe79f;border-radius:8px;padding:10px 12px;min-height:3.2em;white-space:pre-wrap;}
+  .desc{font-size:0.95rem;line-height:1.5;margin-top:14px;min-height:3.2em;padding:10px 12px;border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 8px 8px 0;}
+  .stepcount{color:var(--muted);font-size:0.78rem;}
+  .hint{font-size:0.76rem;color:var(--muted);margin-top:4px;}
+  h3.ph{margin:0 0 8px;font-size:0.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  footer{color:var(--muted);font-size:0.75rem;margin-top:20px;line-height:1.6;}
+  footer code{font-family:var(--mono);background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:1px 4px;}
+  .tt{border-bottom:1px dotted currentColor;cursor:help;border-radius:2px;}
+  .tt:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .chip[data-tip]{cursor:help;}
+  #tip{position:fixed;left:0;top:0;z-index:100;width:max-content;max-width:min(280px,calc(100vw - 16px));padding:8px 10px;border-radius:8px;background:var(--text);color:var(--bg);font:400 .78rem/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;text-transform:none;letter-spacing:0;box-shadow:0 6px 20px rgba(0,0,0,.3);pointer-events:none;visibility:hidden;opacity:0;transition:opacity .12s;}
+  #tip.on{visibility:visible;opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Stack Smash Stepper</h1>
+  <p class="sub">Two classic variants of the same bug. Switch modes to compare them.</p>
+
+  <div class="panel row">
+    <button class="mode on" id="modeA">Option 1 — Basic Overflow</button>
+    <button class="mode" id="modeB">Option 2 — Return Address</button>
+  </div>
+
+  <div class="split" id="split">
+  <div class="colL panel" id="colL">
+    <div class="code" id="code"></div>
+    <div id="controlsA">
+      <label for="payload">Password attempt passed into gets(buffer)</label>
+      <input id="payload" type="text" value="hello" maxlength="20" autocomplete="off" spellcheck="false" placeholder="enter a password…">
+      <div class="row">
+        <button data-pa="letmein">correct password</button>
+        <button data-pa="hi">short, safe input</button>
+        <button data-pa="AAAAAAAAAAAAAAAAAAAA">classic overflow (20×A)</button>
+      </div>
+    </div>
+    <div id="controlsB" style="display:none;">
+      <p class="hint" style="margin:0 0 8px;">Scenario: a door lock reads a password, and its firmware hides a <span class="tt" tabindex="0" data-tip="A universal password built into the firmware so police can unlock any door. Normal code never calls it, which is exactly what makes it a good target.">backdoor_password()</span>. Overflow the input to jump straight to it without knowing any real password.</p>
+      <div class="row">
+        <div><label for="fill">Fill byte</label><input id="fill" type="text" maxlength="1" value="A"></div>
+        <div style="flex:1;min-width:220px;"><label for="len">Overflow length: <span id="lenLabel">24</span> bytes <span class="hint" id="regionLabel"></span></label>
+          <input type="range" id="len" min="0" max="24" value="24" style="width:100%;"></div>
+        <div><label><input type="checkbox" id="redirect" style="width:auto;margin-right:6px;">craft exact RET → backdoor_password()</label></div>
+      </div>
+      <div class="row">
+        <button data-pb="5,false">safe, no overflow</button>
+        <button data-pb="20,false">fill exactly to RET boundary</button>
+        <button data-pb="24,false">garbage overwrite → crash</button>
+        <button data-pb="24,true">precise redirect → backdoor password</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="primary" id="step">Step ▶</button>
+      <button id="run">Run all ▶</button>
+      <button id="pause" disabled>Pause ❚❚</button>
+      <button id="reset">Reset ↺</button>
+    </div>
+    <div class="row">
+      <label style="margin:0;">Run-all speed</label>
+      <input type="range" id="speed" min="0" max="4000" step="250" value="0" style="flex:1;min-width:150px;">
+    </div>
+    <div class="paceline" id="paceline"></div>
+    <div class="bar"><i id="barfill"></i></div>
+    <div class="desc" id="desc">Pick a mode, edit the value, then hit Run.</div>
+  </div>
+
+  <div class="colR" id="colR">
+    <div class="panel">
+      <h3 class="ph">Execution path</h3>
+      <div class="flow">
+        <div class="fbox" id="fb-main">main()</div>
+        <span class="arrow">→</span>
+        <div class="fbox" id="fb-fn">fn()</div>
+        <span class="arrow">→</span>
+        <div class="branches" id="branches"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3 class="ph">Stack memory — buffer fill</h3>
+      <div class="stdin" id="stdin"></div>
+      <div id="regions"></div>
+      <div class="vars" id="vars"></div>
+      <button id="addrHelp" class="helpbtn" type="button">ⓘ How addresses work</button>
+      <template id="genTpl"><h4>How addresses work</h4>
+        <p>Every box is one byte with its own address. The small hex number under a box is the last byte of that address.</p>
+        <p>An address is just a number written in hex: <code>0xbffff7a0</code> = 3,221,223,328. Click any address range, box or dashed band to see it converted to decimal.</p>
+        <p>A range like <code>0xbffff7a0 – 0xbffff7af</code> runs from the first byte’s address (the lower number) to the last byte’s address (the higher number). Its size is high − low + 1.</p>
+        <p>Lower addresses are drawn at the top, higher ones at the bottom. The stack grows toward <b>lower</b> addresses, so the unused space at the top is where the next function call would go, and the unused space at the bottom belongs to older callers. <code>gets()</code> writes toward <b>higher</b> addresses, which is why overflowing <code>buffer</code> runs into whatever sits after it.</p>
+      </template>
+      <div class="statusline" id="statusline">—</div>
+      <span class="stepcount" id="stepcount">—</span>
+    </div>
+    <div class="panel">
+      <h3 class="ph">Output (stdout)</h3>
+      <div class="console" id="console"></div>
+    </div>
+  </div>
+  <svg id="arrowSvg">
+    <path id="arrowPath" class="ap"/>
+    <circle id="as" class="ap" r="5"/>
+    <polygon id="ah" class="ap late"/>
+    <g id="alab" class="ap late"><rect id="alr" rx="5"/><text id="alt"></text></g>
+    <path id="dataPath" class="dp"/><polygon id="dh" class="dp"/><g id="dlab" class="dp"><rect id="dlr" rx="5"/><text id="dlt"></text></g>
+  </svg>
+  </div>
+
+  <footer>
+    Teaching model: the stack layout is simplified, and the <span class="tt" tabindex="0" data-tip="0x080004a8 and 0x08000420 (code) and 0xbffff7a0 onward (stack) are made-up values, and the dim bytes in unused space are invented leftovers, not from a real binary. They are chosen to echo the worked gdb example in Aleph One’s original paper.">addresses</span> are illustrative.<br>
+    Option 2’s return-address overwrite follows the classic walkthrough in Aleph One, “Smashing the Stack for Fun and Profit,” Phrack 49 (1996).<br>
+    Both demos use <code>gets()</code>, which <span class="tt" tabindex="0" data-tip="gets() was removed from the C standard in C11 because it cannot be told a buffer size, so it can never stop at the end of one. Current GCC and Clang refuse to link it (undefined reference to 'gets'). These demos model an older, unprotected build so the classic overflow stays visible.">modern compilers reject</span>. A real build would usually add a <span class="tt" tabindex="0" data-tip="A secret value the compiler places just before the saved return address (-fstack-protector). It is checked right before the function returns. If an overflow changed it, the program prints *** stack smashing detected ***: terminated and exits before the CPU ever jumps to the corrupted address, so Option 2’s crash case would end that way.">stack canary</span>.
+  </footer>
+</div>
+
+<div id="tip" role="tooltip"></div>
+<div id="pop" class="pop"><div class="popcard" id="popcard"><button id="popx" type="button" aria-label="Close">✕</button><div id="popbody"></div></div></div>
+<script>
+const $=id=>document.getElementById(id);
+const CODE_A=["void secret_function() {","    printf(\"\\n*** Welcome to the secret area! ***\\n\");","    printf(\"You smashed the stack!\\n\");","}","",
+"void check_password() {","    char buffer[16];","    int  granted = 0;","",
+"    printf(\"Enter password: \");","    gets(buffer);","    printf(\"You typed: %s\\n\", buffer);","",
+"    if (strcmp(buffer, \"letmein\") == 0) {","        granted = 1;","    }","",
+"    printf(\"granted = %d\\n\", granted);","    if (granted) {","        printf(\"Access granted.\\n\");","        secret_function();","    } else {",
+"        printf(\"Incorrect password\\n\");","        printf(\"Access denied.\\n\");","    }","}","",
+"int main() {","    check_password();","    return 0;","}"];
+const LA={SECRET:0,PRINT1:1,PRINT2:2,SEND:3,FN:5,BUF:6,VAR:7,PROMPT:9,GETS:10,TYPED:11,IFCMP:13,SET:14,PRGR:17,IFVAR:18,GRANT_PRINT:19,CALLS:20,ELSE:21,DENY1:22,DENY2:23,FEND:25,MAIN:27,CALLFN:28,RET:29};
+const CODE_B=["void backdoor_password() {  // universal key for police","    printf(\"*** Backdoor password accepted: door unlocked for police ***\\n\");","}","",
+"void vulnerable() {","    char buffer[16];   // buffer, then SFP, then RET follow","    printf(\"Enter input: \");","    gets(buffer);","    printf(\"You typed: %s\\n\", buffer);","}","",
+"int main() {","    vulnerable();","    printf(\"Back in main - program continues normally.\\n\");","    return 0;","}"];
+const LB={SECRET:0,PRINT:1,SEND:2,FN:4,BUF:5,PROMPT:6,GETS:7,TYPED:8,FEND:9,MAIN:11,CALLFN:12,RESUME:13,RET:14};
+const RET_MAIN=0x080004a8, RET_SECRET=0x08000420, BASE=0xbffff798;
+const hex8=n=>'0x'+n.toString(16).padStart(8,'0');
+const escB=a=>a.map(v=>v>=32&&v<=126?String.fromCharCode(v):'\\x'+v.toString(16).padStart(2,'0')).join('');
+const upTo0=a=>{const z=a.indexOf(0);return z<0?a:a.slice(0,z);};
+const rangeTip=r=>{const lo=r.addr,hi=r.addr+r.size-1,f=n=>`${hex8(n)} = ${n.toLocaleString('en-US')}`;
+  return `LOW address: ${f(lo)}\nHIGH address: ${f(hi)}\nSize: ${r.size} bytes (high − low + 1)\n`+(r.id==='lo'?'Unused. These are LOWER addresses than the variables: the stack grows down into this space when more functions are called.':r.id==='hi'?'Unused here. These are HIGHER addresses than the variables: older stack data (the callers) lives up here, and an overflow writes toward it.':'Each box to the right is one address higher. gets() writes toward higher addresses.');};
+const gapTip=n=>n===0?`Everything below ${hex8(BASE)} (${BASE.toLocaleString('en-US')}) is lower-address memory, counting down toward 0. The stack grows DOWN into it as more functions are called. A real process has megabytes of it, so only a few bytes are drawn.`:`Everything above the last box is higher-address memory: the callers’ frames, environment variables and arguments, up to the top of the stack (0xc0000000 = 3,221,225,472 on classic 32-bit Linux). Overflows write toward here.`;
+const CHR=v=>v===0?'\\0':v===32?'␣':v>32&&v<=126?String.fromCharCode(v):'·';
+const chipTxt=v=>v>=33&&v<=126?String.fromCharCode(v):v===0?'\\0':'x'+v.toString(16).padStart(2,'0');
+
+const MODES={
+  A:{code:CODE_A, fnName:'check_password()', regions:[{id:'lo',label:'unused stack space',size:8,free:1},{id:'buffer',label:'buffer[16]',size:16},{id:'granted',label:'granted (int)',size:4},{id:'hi',label:'unused space (rest of the stack)',size:8,free:1}],
+     branches:[{id:'branch-0',label:'secret_function()'},{id:'branch-1',label:'Access denied'}]},
+  B:{code:CODE_B, fnName:'vulnerable()', regions:[{id:'lo',label:'unused stack space',size:8,free:1},{id:'buffer',label:'buffer[16]',size:16},{id:'sfp',label:'SFP (4 bytes)',size:4},{id:'ret',label:'RET (4 bytes)',size:4},{id:'hi',label:'unused space (rest of the stack)',size:8,free:1}],
+     branches:[{id:'branch-0',label:'resume main() [0x080004a8]'},{id:'branch-1',label:'backdoor_password() [0x08000420]'},{id:'branch-2',label:'SEGFAULT'}]}
+};
+let inputBytes=[], chipPos=-1, current='A', steps=[], idx=-1, timer=null, mem={}, pend=null, lastArrow=null;
+
+function toLE(n,len){const a=[];for(let i=0;i<len;i++){a.push(n&0xff);n=Math.floor(n/256);}return a;}
+function fromLE(b){let n=0;for(let i=b.length-1;i>=0;i--)n=n*256+b[i];return n>>>0;}
+
+function renderCode(){
+  const el=$('code'); el.innerHTML='';
+  MODES[current].code.forEach((t,i)=>{const d=document.createElement('div');d.className='line';d.id='line-'+i;const n=document.createElement('span');n.className='ln';n.textContent=i+1;d.appendChild(n);d.appendChild(document.createTextNode(t||'\u00A0'));el.appendChild(d);});
+}
+function renderRegionsSkeleton(){
+  const el=$('regions'); el.innerHTML=`<div class="gap top" data-gap="0">⋮  lower addresses — thousands more unused bytes  ⋮</div><div class="gap bot" data-gap="1">⋮  higher addresses — caller’s frames, environment, kernel  ⋮</div>`; mem={}; let off=0;
+  MODES[current].regions.forEach(r=>{
+    mem[r.id]=Array(r.size).fill(null); r.addr=BASE+off; off+=r.size;
+    const div=document.createElement('div'); div.className='region'; div.style.marginTop='8px';
+    div.innerHTML=`<h3>${gloss(r.label)} <span class="rg" data-r="${r.id}">${hex8(r.addr)} – ${hex8(r.addr+r.size-1)} ⓘ</span></h3><div class="cells" id="cells-${r.id}"></div>`;
+    el.appendChild(div);
+  });
+}
+function renderBranchesSkeleton(){
+  const el=$('branches'); el.innerHTML='';
+  MODES[current].branches.forEach(b=>{const d=document.createElement('div');d.className='fbox';d.id='fb-'+b.id;d.textContent=b.label;el.appendChild(d);});
+  $('fb-fn').textContent=MODES[current].fnName;
+}
+const stale=a=>{const x=Math.imul(a,2654435761)>>>0,v=(x>>>16)&255;return v%3===0?0:v;};
+function cellHTML(c,a){
+  const ad=`<span class="ad">${(a&255).toString(16).padStart(2,'0')}</span>`;
+  if(!c) return `<span class="ch">·</span><span class="hx">${stale(a).toString(16).padStart(2,'0')}</span>${ad}`;
+  if(c.v==null) return `<span class="ch">?</span><span class="hx">??</span>${ad}`;
+  return `<span class="ch">${CHR(c.v)}</span><span class="hx">${c.v.toString(16).padStart(2,'0')}</span>${ad}`;
+}
+function renderMem(cur){
+  MODES[current].regions.forEach(r=>{
+    const el=$('cells-'+r.id); el.innerHTML='';
+    mem[r.id].forEach((c,i)=>{const d=document.createElement('div');d.className='cell'+(c?' '+c.cls:' free')+(cur&&cur.region===r.id&&cur.index===i?' current':'');d.innerHTML=cellHTML(c,r.addr+i);d.dataset.a=r.addr+i;d.dataset.r=r.id;d.dataset.i=i;el.appendChild(d);});
+  });
+}
+function clearActive(){document.querySelectorAll('.fbox.active').forEach(e=>e.classList.remove('active'));}
+function setActive(id){clearActive(); if(id) $(id)?.classList.add('active');}
+function setTaken(id,cls){ if(id) $(id)?.classList.add(cls); }
+
+function buildStepsA(payload){
+  const steps=[]; const bytes=[...payload].map(c=>c.charCodeAt(0)&0xff); bytes.push(0); inputBytes=bytes;
+  steps.push({line:LA.MAIN, desc:'main() starts executing.', flow:{active:'fb-main'}});
+  steps.push({line:LA.CALLFN, desc:'main() calls check_password().', flow:{active:'fb-fn'}});
+  steps.push({line:LA.FN, desc:'Entering check_password(). Stack frame set up.'});
+  steps.push({line:LA.BUF, desc:'buffer[16] allocated — 16 uninitialized bytes.', ops:[{op:'alloc',region:'buffer',size:16}]});
+  steps.push({line:LA.VAR, desc:'int granted — 4 bytes reserved right after buffer (next higher addresses). They are uninitialized, so they still hold ??.', ops:[{op:'alloc',region:'granted',size:4}]});
+  steps.push({line:LA.VAR, lab:'granted = 0 → 00 00 00 00', desc:'The initializer “= 0” runs: all four bytes of granted are filled with 00.', ops:[0,1,2,3].map(k=>({op:'byte',region:'granted',index:k,value:0,cls:'own'}))});
+  steps.push({line:LA.PROMPT, desc:'Prompt printed.', print:'Enter password: '});
+  steps.push({line:LA.GETS, tgtRegion:'buffer', print:payload+'\n', lab:'buffer = 0xbffff7a0', desc:'gets(buffer) reads characters from stdin and stores each one at the next address (buffer[0], buffer[1], …), then a \\0 terminator. It never checks how much room buffer has.'+(payload?'':' You typed nothing, so only the \\0 terminator is stored.')});
+  bytes.forEach((b,i)=>{
+    if(i>=20) return;
+    const ov=i>=16;
+    steps.push({line:LA.GETS, chip:i, ops:[{op:'byte',region:ov?'granted':'buffer',index:ov?i-16:i,value:b,cls:ov?'hit':'own'}],
+      desc: !ov?`gets() takes the next character from stdin and copies ${b===0?'the \\0 terminator':`‘${CHR(b)}’ (0x${b.toString(16)})`} into buffer[${i}]. No bounds check — nothing stops it at buffer[15].`:`buffer is full — byte ${i} overflows into granted, byte ${i-16}!`});
+  });
+  if(bytes.length>20) steps.push({line:LA.GETS, chip:20, desc:'gets() also writes the \\0 terminator at byte 20 — one byte past granted, outside the area modeled here.'});
+  const matched=payload==='letmein';
+  steps.push({line:LA.TYPED, lab:'prints what %s finds in buffer', print:'You typed: '+payload+'\n', desc:`printf("%s") walks memory from buffer until it finds a \\0 and prints every byte on the way.`+(payload.length>16?' Here that runs past the end of buffer and into granted.':'')});
+  steps.push({line:LA.IFCMP, tgtRegion:'buffer', lab:'strcmp reads buffer until \\0', desc:`strcmp(buffer,"letmein") ${matched?'matches':'does not match'}.`});
+  const gr=[0,0,0,0]; bytes.forEach((b,i)=>{ if(i>=16 && i-16<4) gr[i-16]=b; });
+  if(matched){ steps.push({line:LA.SET, lab:'granted = 1 → 01 00 00 00', desc:'Correct password — granted legitimately set to 1.',
+    ops:[0,1,2,3].map(k=>({op:'byte',region:'granted',index:k,value:k===0?1:0,cls:'legit'}))}); gr[0]=1;gr[1]=0;gr[2]=0;gr[3]=0; }
+  const grNum=fromLE(gr); const smashed=grNum!==0 && !matched;
+  steps.push({line:LA.PRGR, lab:'prints granted', print:`granted = ${grNum|0}\n`, desc:`printf("%d") reads the 4 bytes of granted (${hex8(grNum)}) and prints the number ${grNum|0}.`});
+  steps.push({line:LA.IFVAR, tgtRegion:'granted', lab:'reads granted', desc:`Checking if(granted) — value is ${grNum}.`, status:`granted currently = ${grNum}`});
+  if(grNum!==0){
+    steps.push({line:LA.GRANT_PRINT, desc: smashed?'granted is nonzero because the OVERFLOW wrote into it — not because the password matched.':'Correct password — granted legitimately.', print:'Access granted.\n'});
+    steps.push({line:LA.CALLS, desc: smashed?'Entering secret_function() despite the wrong password!':'Entering secret_function() normally.',
+      flow:{active:'fb-branch-0', taken:'fb-branch-0', cls:smashed?'hijack':'normal'}});
+    steps.push({line:LA.SECRET, desc:'Now executing inside secret_function().'});
+    steps.push({line:LA.PRINT1, desc:'Secret message printed.', print:'\n*** Welcome to the secret area! ***\n'});
+    steps.push({line:LA.PRINT2, desc:'Second line printed.', print:'You smashed the stack!\n'});
+    steps.push({line:LA.SEND, desc:'secret_function() returns.'});
+  } else {
+    steps.push({line:LA.ELSE, desc:'granted is 0 — the else branch runs.', flow:{active:'fb-branch-1', taken:'fb-branch-1', cls:'normal'}});
+    steps.push({line:LA.DENY1, desc:'First message printed.', print:'Incorrect password\n'});
+    steps.push({line:LA.DENY2, desc:'Second message printed.', print:'Access denied.\n'});
+  }
+  steps.push({line:LA.FEND, desc:'check_password() returns.'});
+  steps.push({line:LA.CALLFN, desc:'Back in main() after the call.', flow:{active:'fb-main'}});
+  steps.push({line:LA.RET, desc:'main() returns 0 — program exits.'});
+  steps.push({line:null, desc:'Done. Adjust input and rebuild.'});
+  return steps;
+}
+
+function buildStepsB(len, fillChar, redirect){
+  const steps=[]; const fc=(fillChar||'A').charCodeAt(0)&0xff;
+  const bytes=Array(len).fill(fc); inputBytes=bytes;
+  if(redirect && len>=20){ const a=toLE(RET_SECRET,4); for(let k=0;k<4;k++) bytes[20+k]=a[k]; }
+  steps.push({line:LB.MAIN, desc:'main() starts executing.', flow:{active:'fb-main'}});
+  steps.push({line:LB.CALLFN, lab:'CALL pushes return addr 0x080004a8', desc:'main() calls vulnerable(). CALL pushes the return address (0x080004a8).', ops:[0,1,2,3].map(k=>({op:'byte',region:'ret',index:k,value:toLE(RET_MAIN,4)[k],cls:'alloc'})), flow:{active:'fb-fn'}});
+  steps.push({line:LB.FN, lab:'save caller’s EBP 0xbffff7d8 → SFP', desc:'Entering vulnerable(). The prologue saves the caller’s frame pointer (0xbffff7d8) into the 4-byte SFP slot.', ops:toLE(0xbffff7d8,4).map((v,k)=>({op:'byte',region:'sfp',index:k,value:v,cls:'alloc'}))});
+  steps.push({line:LB.BUF, desc:'buffer[16] allocated (uninitialized ??). Order: buffer, then SFP, then RET.', ops:[{op:'alloc',region:'buffer',size:16}]});
+  steps.push({line:LB.PROMPT, desc:'Prompt printed.', print:'Enter input: '});
+  steps.push({line:LB.GETS, tgtRegion:'buffer', print:escB(bytes)+'\n', lab:'buffer = 0xbffff7a0', desc:'gets(buffer) reads the input from stdin and stores each byte at the next address, buffer[0], buffer[1], … It never checks the buffer’s size.'});
+  bytes.forEach((b,i)=>{
+    const region=i<16?'buffer':i<20?'sfp':'ret';
+    const ix=i<16?i:i<20?i-16:i-20;
+    const label= region==='buffer'?`gets() writes byte ${i} into buffer[${i}].`: region==='sfp'?`buffer full — byte ${i} overflows into SFP, byte ${ix}.`:`SFP full too — byte ${i} overflows into RET, byte ${ix}! This is the return address.`;
+    const cls = region==='buffer'?'own':region==='sfp'?'sfpw':(redirect && i>=20 ? 'legit':'hit');
+    steps.push({line:LB.GETS, chip:i, ops:[{op:'byte',region,index:ix,value:b,cls}], desc:label});
+  });
+  steps.push({line:LB.TYPED, lab:'prints what %s finds in buffer', print:'You typed: '+escB(upTo0(bytes))+'\n', desc:`printf("%s") walks memory from buffer until it finds a \\0 and prints every byte on the way.`+(len>16?' Here that runs past the end of buffer, into SFP and RET.':'')});
+  steps.push({line:LB.FEND, desc:"Function epilogue: ‘leave’ restores ESP/EBP, discarding SFP.", ops:[0,1,2,3].map(k=>({op:'byte',region:'sfp',index:k,value:0,cls:'alloc'}))});
+  const base=toLE(RET_MAIN,4);
+  const retBytes=[0,1,2,3].map(k=> bytes.length>20+k?bytes[20+k]:base[k]);
+  const num=fromLE(retBytes);
+  const hex='0x'+num.toString(16).padStart(8,'0');
+  if(num===RET_SECRET){
+    steps.push({line:LB.FEND, desc:`‘ret’ pops ${hex} — the exact address of backdoor_password() — and jumps there.`, status:`RET currently points to: JUMPS to backdoor_password() ${hex} — hijacked!`, flow:{active:'fb-branch-1', taken:'fb-branch-1', cls:'hijack'}});
+    steps.push({line:LB.SECRET, desc:'Execution lands inside backdoor_password(): the universal police key is accepted and the door unlocks, with no real password checked. main() never regains control normally.'});
+    steps.push({line:LB.PRINT, desc:'Backdoor message printed: the door is now unlocked for whoever jumped here.', print:'*** Backdoor password accepted: door unlocked for police ***\n'});
+    steps.push({line:LB.SEND, desc:'backdoor_password() would try to return next, but the stack beneath it is still corrupted. Demo ends here.'});
+  } else if(num===RET_MAIN){
+    steps.push({line:LB.FEND, desc:`‘ret’ pops ${hex} — unchanged — control returns to main() exactly as intended.`, status:`RET currently points to: returns to main() ${hex}`, flow:{active:'fb-branch-0', taken:'fb-branch-0', cls:'normal'}});
+    steps.push({line:LB.CALLFN, desc:'Back in main() after the call.', flow:{active:'fb-main'}});
+    steps.push({line:LB.RESUME, desc:'Back in main() exactly as expected.', print:'Back in main - program continues normally.\n'});
+    steps.push({line:LB.RET, desc:'main() returns 0. Program exits cleanly.'});
+  } else {
+    steps.push({line:LB.FEND, desc:`‘ret’ pops ${hex} and jumps there — not mapped into this process’s memory.`, status:`RET currently points to: ${hex} — invalid, crash`, flow:{active:'fb-branch-2', taken:'fb-branch-2', cls:'crash'}});
+    steps.push({line:null, desc:`The CPU faults fetching an instruction from ${hex}. This is the real, undefined-behavior consequence of an unbounded write — C gives you no protection against it.`, print:'Segmentation fault (core dumped)\n'});
+  }
+  steps.push({line:null, desc:'Done. Adjust the controls and rebuild to try another scenario.'});
+  return steps;
+}
+
+/* ---- arrow: code line -> thing about to change ---- */
+function renderChips(a){
+  const el=$('stdin'); el.innerHTML='<b>stdin → gets(buffer)</b>';
+  inputBytes.forEach((v,i)=>{const d=document.createElement('span'); d.className='chip'+(i===a?' cur':i<a?' done':''); d.textContent=chipTxt(v); d.dataset.tip=`byte ${i}: 0x${v.toString(16).padStart(2,'0')} (${v})`; el.appendChild(d);});
+  if(!inputBytes.length) el.append(' (no input bytes)');
+}
+function renderVars(){
+  const L=[];
+  MODES[current].regions.forEach(r=>{
+    if(r.free) return; const a=mem[r.id]||[]; let v;
+    if(!a[0]) v='(not allocated yet)';
+    else if(r.id==='buffer'){ let s='',nul=false,w=0;
+      for(const c of a){ if(!c||c.v==null) break; w++; if(c.v===0){nul=true;break;} s+=c.v>=32&&c.v<=126?String.fromCharCode(c.v):'·'; }
+      v=w===0?'<uninitialized>':`"${s}"${nul?'':'  (no \\0 yet)'}`; }
+    else if(!a.every(c=>c&&c.v!=null)) v='<uninitialized>';
+    else { const n=fromLE(a.map(c=>c.v)); v=r.id==='granted'?`${n}  (${hex8(n)})`:hex8(n); }
+    L.push(`${(r.id==='sfp'?'saved EBP':r.id==='ret'?'return addr':r.id).padEnd(12)}@${hex8(r.addr)}  ${v}`);
+  });
+  $('vars').textContent=L.join('\n');
+}
+function targetFor(s){
+  const op=(s.ops||[])[0];
+  if(s.tgtRegion) return {get:()=>$('cells-'+s.tgtRegion).children[0], label:s.lab, color:s.tgtRegion==='buffer'?'--buffer':'--accent', all:true};
+  if(op&&op.op==='byte'){
+    if(s.ops.length>1) return {get:()=>$('cells-'+op.region).children[op.index], label:s.lab||`write ${s.ops.length} bytes → ${op.region}`, color:'--accent', all:true};
+    const ad=hex8(MODES[current].regions.find(r=>r.id===op.region).addr+op.index);
+    const lbl=`write 0x${op.value.toString(16).padStart(2,'0')} ‘${CHR(op.value)}’ → ${op.region}[${op.index}] @${ad}`, col={hit:'--overflow',sfpw:'--sfp',own:'--buffer'}[op.cls]||'--accent';
+    if(s.chip!=null) return {get:()=>$('stdin').children[s.chip+1], label:`gets reads ‘${chipTxt(op.value)}’ from stdin`, to:()=>$('cells-'+op.region).children[op.index], toLabel:lbl, color:col};
+    return {get:()=>$('cells-'+op.region).children[op.index],
+      label:`write 0x${op.value.toString(16).padStart(2,'0')} ‘${CHR(op.value)}’ → ${op.region}[${op.index}] @${ad}`,
+      color:{hit:'--overflow',sfpw:'--sfp',own:'--buffer'}[op.cls]||'--accent'};
+  }
+  return targetFor0(s);
+}
+function targetFor0(s){
+  const op=(s.ops||[])[0];
+  if(op&&op.op==='byte') return {get:()=>$('cells-'+op.region).children[op.index],
+    label:`write 0x${op.value.toString(16).padStart(2,'0')} → ${op.region}[${op.index}]`,
+    color:{hit:'--overflow',sfpw:'--sfp',own:'--buffer'}[op.cls]||'--accent'};
+  if(op&&op.op==='alloc') return {get:()=>$('cells-'+op.region), label:`reserve ${op.size} bytes`, color:'--accent'};
+  if(s.flow) return {get:()=>$(s.flow.active), label:'control goes here', color:s.flow.cls==='crash'?'--overflow':'--accent'};
+  if(s.print) return {get:()=>$('console'), label:s.lab||'prints here', color:'--accent'};
+  return null;
+}
+function draw(anim){
+  const parts=document.querySelectorAll('.ap'), p=$('arrowPath'), A=lastArrow;
+  const hide=()=>{parts.forEach(e=>e.classList.remove('show')); document.querySelectorAll('.dp').forEach(e=>e.classList.remove('show'));};
+  if(!A) return hide();
+  const ln=$('line-'+A.line), tg=A.get();
+  const S=$('split').getBoundingClientRect(), L=$('colL').getBoundingClientRect(), R=$('colR').getBoundingClientRect();
+  if(!ln||!tg||R.left<L.right-10) return hide();
+  const c=$('code').getBoundingClientRect(), a=ln.getBoundingClientRect(), t=tg.getBoundingClientRect();
+  const x1=c.right-8-S.left, y1=a.top+a.height/2-S.top, x2=t.left+t.width/2-S.left, y2=t.top-3-S.top;
+  const c1=x1+Math.max(60,(x2-x1)/2), ye=y2-9, col=`var(${A.color})`;
+  p.setAttribute('d',`M${x1} ${y1}C${c1} ${y1} ${x2} ${y2-80} ${x2} ${ye}`);
+  p.style.stroke=col; $('ah').style.fill=col; $('as').style.fill=col; $('alr').style.stroke=col;
+  $('ah').setAttribute('points',`${x2},${y2} ${x2-6},${ye} ${x2+6},${ye}`);
+  $('as').setAttribute('cx',x1); $('as').setAttribute('cy',y1);
+  const lt=$('alt'); lt.textContent=A.label;
+  lt.setAttribute('x',(x1+3*c1+4*x2)/8); lt.setAttribute('y',(4*y1+3*(y2-80)+ye)/8);
+  const bb=lt.getBBox(), r=$('alr');
+  r.setAttribute('x',bb.x-7); r.setAttribute('y',bb.y-3); r.setAttribute('width',bb.width+14); r.setAttribute('height',bb.height+6);
+  if(anim){
+    hide(); const len=p.getTotalLength();
+    p.style.transition='none'; p.style.strokeDasharray=len; p.style.strokeDashoffset=len; p.getBoundingClientRect();
+    p.style.transition='stroke-dashoffset .8s ease'; p.style.strokeDashoffset=0;
+  } else { p.style.transition='none'; p.style.strokeDasharray='none'; p.style.strokeDashoffset=0; }
+  parts.forEach(e=>e.classList.add('show')); drawData(A,S,anim);
+}
+
+/* ---- each step: 1) preview (highlight line, arrow, target)  2) commit (memory changes) ---- */
+function drawData(A,S,anim){
+  const dp=$('dataPath'), dh=$('dh'), ds=[dp,dh,$('dlab')], to=A.to&&A.to(), fr=A.get();
+  if(!to||!fr){ ds.forEach(e=>e.classList.remove('show')); return; }
+  const a=fr.getBoundingClientRect(), b=to.getBoundingClientRect();
+  const x1=a.left+a.width/2-S.left, y1=a.bottom+1-S.top, x2=b.left+b.width/2-S.left, y2=b.top-3-S.top, ye=y2-9, col=`var(${A.color})`;
+  dp.setAttribute('d',`M${x1} ${y1}C${x1} ${y1+50} ${x2} ${ye-50} ${x2} ${ye}`);
+  dp.style.stroke=col; dh.style.fill=col; $('dlr').style.stroke=col;
+  dh.setAttribute('points',`${x2},${y2} ${x2-6},${ye} ${x2+6},${ye}`);
+  const lt=$('dlt'); lt.textContent=A.toLabel;
+  lt.setAttribute('x',(x1+x2)/2); lt.setAttribute('y',(y1+ye)/2);
+  const bb=lt.getBBox(), r=$('dlr');
+  r.setAttribute('x',bb.x-7); r.setAttribute('y',bb.y-3); r.setAttribute('width',bb.width+14); r.setAttribute('height',bb.height+6);
+  if(anim){ ds.forEach(e=>e.classList.remove('show')); void dp.getBoundingClientRect(); }
+  ds.forEach(e=>e.classList.add('show'));
+}
+function preview(s){
+  document.querySelectorAll('.line.active').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.tgt').forEach(e=>e.classList.remove('tgt'));
+  if(s.line!=null) $('line-'+s.line)?.classList.add('active');
+  window.tipHide&&tipHide(); $('desc').innerHTML=gloss(s.desc);
+  $('stepcount').textContent=`Step ${idx+1} / ${steps.length}`;
+  const T=targetFor(s);
+  lastArrow=(T&&s.line!=null)?{line:s.line,...T}:null;
+  T?.get()?.classList.add('tgt'); T?.to?.()?.classList.add('tgt');
+  if(T?.all) [...T.get().parentNode.children].forEach(e=>e.classList.add('tgt'));
+  if(s.chip!=null) chipPos=s.chip; else if(chipPos>=0) chipPos=999;
+  renderChips(chipPos);
+  draw(true);
+}
+function commit(s){
+  let cur=null;
+  (s.ops||[]).forEach(op=>{
+    if(op.op==='alloc'){ for(let i=0;i<op.size;i++) mem[op.region][i]={v:null,cls:'alloc'}; }
+    else { mem[op.region][op.index]={v:op.value,cls:op.cls}; cur={region:op.region,index:op.index}; }
+  });
+  renderMem(cur);
+  renderVars();
+  if(s.print) $('console').textContent += s.print;
+  if(s.status) $('statusline').textContent = s.status;
+  if(s.flow){ setActive(s.flow.active); if(s.flow.taken) setTaken(s.flow.taken, s.flow.cls); }
+  draw(false);
+}
+const pace=()=>+$('speed').value;
+function flush(){ if(pend){ clearTimeout(pend.t); const f=pend.fn; pend=null; f(); } }
+function stepForward(fast){
+  flush();
+  if(idx>=steps.length-1){stopPlay();return;}
+  idx++; const s=steps[idx]; preview(s);
+  const go=()=>{pend=null;commit(s);};
+  pend={t:setTimeout(go,fast?900:Math.min(900,pace()*0.45)), fn:()=>commit(s)};
+  $('step').disabled=idx>=steps.length-1;
+}
+function sched(){
+  if(idx>=steps.length-1){stopPlay();return;}
+  const s=steps[idx]||{}, d=pace()*((s.flow&&s.flow.taken)||s.status?1.8:1), b=$('barfill');
+  b.style.animation='none'; void b.offsetWidth; b.style.animation=`fill ${d}ms linear forwards`;
+  timer=setTimeout(()=>{try{stepForward();}catch(e){console.error(e);} sched();},d);
+}
+function startPlay(){ clearTimeout(timer); $('pause').disabled=false; stepForward(); sched(); }
+function stopPlay(){ clearTimeout(timer); timer=null; $('pause').disabled=true; $('barfill').style.animation='none'; }
+
+function rebuild(){
+  stopPlay(); if(pend){clearTimeout(pend.t);pend=null;}
+  steps = current==='A' ? buildStepsA($('payload').value)
+                         : buildStepsB(+$('len').value, $('fill').value, $('redirect').checked);
+  idx=-1; lastArrow=null; draw(false);
+  document.querySelectorAll('.tgt').forEach(e=>e.classList.remove('tgt'));
+  renderCode(); renderRegionsSkeleton(); renderMem(null); renderBranchesSkeleton(); chipPos=-1; renderVars(); renderChips(-1);
+  $('console').textContent='$ ./a.out\n'; $('statusline').textContent='—';
+  $('desc').textContent='Ready. Press Step to go one step at a time, or Run all to watch it play at the speed set below.';
+  $('stepcount').textContent=`Step 0 / ${steps.length}`;
+  $('step').disabled=false;
+}
+function switchMode(m){
+  current=m;
+  $('modeA').classList.toggle('on', m==='A'); $('modeB').classList.toggle('on', m==='B');
+  $('controlsA').style.display = m==='A'?'block':'none';
+  $('controlsB').style.display = m==='B'?'block':'none';
+  rebuild();
+}
+function updateLenLabel(){
+  const v=+$('len').value;
+  $('lenLabel').textContent=v;
+  $('regionLabel').textContent = v<16?'(inside buffer)':v<20?'(reaches into SFP)':'(reaches into RET!)';
+}
+function updatePace(){
+  const s=pace()/1000;
+  $('paceline').textContent=s===0?'Instant: Run all finishes every step in one click and shows the finished result. Drag right to watch it play instead.':`${s} s per step — the arrow shows first, then the memory changes. Step ▶ is always one step at a time.`;
+}
+$('modeA').addEventListener('click', ()=>switchMode('A'));
+$('modeB').addEventListener('click', ()=>switchMode('B'));
+function runAll(){
+  stopPlay(); flush();
+  if(idx<0||idx>=steps.length-1) rebuild();
+  if(pace()===0){
+    while(idx<steps.length-1){ idx++; commit(steps[idx]); }
+    chipPos=999; preview(steps[idx]);
+    $('desc').innerHTML=gloss(steps[idx].desc+' (Ran all '+steps.length+' steps. Press Reset ↺, then Step ▶ to go through it slowly.)');
+    $('step').disabled=true;
+  } else startPlay();
+}
+$('run').addEventListener('click', runAll);
+$('step').addEventListener('click', ()=>{stopPlay(); if(idx<0) rebuild(); stepForward(true);});
+$('pause').addEventListener('click', stopPlay);
+$('reset').addEventListener('click', ()=>{
+  
+  
+  rebuild();
+});
+$('len').addEventListener('input', ()=>{updateLenLabel(); rebuild();});
+$('payload').addEventListener('input', rebuild); $('fill').addEventListener('input', rebuild); $('redirect').addEventListener('change', rebuild);
+$('speed').addEventListener('input', updatePace);
+window.addEventListener('resize', ()=>draw(false));
+document.querySelectorAll('button[data-pa]').forEach(b=>b.addEventListener('click',()=>{$('payload').value=b.dataset.pa; rebuild();}));
+document.querySelectorAll('button[data-pb]').forEach(b=>b.addEventListener('click',()=>{
+  const [len,redir]=b.dataset.pb.split(','); $('len').value=len; updateLenLabel();
+  $('redirect').checked = redir==='true'; rebuild();
+}));
+
+const hx2=v=>v.toString(16).padStart(2,'0'), dec=n=>n.toLocaleString('en-US'), GEN=()=>$('genTpl').innerHTML;
+function showPop(h){ $('popbody').innerHTML=h; $('pop').classList.add('open'); }
+function hidePop(){ $('pop').classList.remove('open'); }
+function popRegion(id){ const r=MODES[current].regions.find(x=>x.id===id); if(!r) return;
+  showPop(`<h4>${r.label}</h4><p>${rangeTip(r).replace(/\n/g,'<br>')}</p><hr>`+GEN()); }
+function popGap(n){ showPop(`<h4>${n?'Higher addresses':'Lower addresses'}</h4><p>${gapTip(n)}</p><hr>`+GEN()); }
+function popCell(id,i){ const r=MODES[current].regions.find(x=>x.id===id), a=r.addr+i, c=mem[id][i]; let b;
+  if(!c) b=`<p>Unused memory. It holds a leftover byte (0x${hx2(stale(a))}) from whatever used this space before. No variable owns it.</p>`;
+  else if(c.v==null) b=`<p>Reserved for <b>${r.label}</b>, but nothing has been written yet, so its value is unknown (??).</p>`;
+  else b=`<table class="ptab"><tr><td>Hex</td><td>0x${hx2(c.v)}</td></tr><tr><td>Decimal</td><td>${c.v}</td></tr><tr><td>Binary</td><td>${c.v.toString(2).padStart(8,'0')}</td></tr><tr><td>Character</td><td>‘${CHR(c.v)}’</td></tr></table>`;
+  showPop(`<h4>${id==='buffer'?'buffer['+i+']':r.label+', byte '+i}</h4><table class="ptab"><tr><td>Address</td><td>${hex8(a)}</td><td>${dec(a)}</td></tr></table>`+b); }
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(t.id==='pop'||t.closest('#popx')) return hidePop();
+  if(t.closest('#popcard')) return;
+  const g=t.closest('.gap'), rg=t.closest('.rg'), c=t.closest('.cell');
+  if(g) popGap(+g.dataset.gap); else if(rg) popRegion(rg.dataset.r); else if(c&&c.dataset.r) popCell(c.dataset.r,+c.dataset.i); else if(t.closest('#addrHelp')) showPop(GEN());
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') hidePop(); });
+/* ---- glossary + tooltips: one shared bubble, works on hover, keyboard focus and tap ---- */
+const GLOSS={
+ 'stack frame':'The slice of stack a function owns while it runs: its local variables plus the bookkeeping (saved frame pointer and return address) needed to get back to the caller.',
+ 'frame pointer':'EBP, a CPU register marking where the current stack frame starts. Each function saves the caller’s value so it can restore it on exit.',
+ 'SFP':'Saved Frame Pointer: a 4-byte slot holding the caller’s EBP. It sits between buffer and RET.',
+ 'RET':'The saved return address (4 bytes). When the function ends, the CPU jumps to whatever address is stored here, so whoever controls these bytes controls where the program goes next.',
+ 'return address':'The spot in the caller’s code where execution resumes once this function finishes. The CALL instruction pushes it onto the stack.',
+ 'prologue':'The first few instructions of a function: they save the caller’s frame pointer and set up the new stack frame.',
+ 'epilogue':'The last instructions of a function (leave, then ret): they tear down the frame and jump to the return address.',
+ 'uninitialized':'Nothing has been written to these bytes yet, so they hold whatever an earlier use left behind. C does not clear them for you.',
+ 'bounds check':'A test that a write fits inside the array before it happens. C does not do this automatically, and gets() has no way to.',
+ 'undefined-behavior':'The C standard puts no limit on what happens: the program may crash, misbehave quietly, or be taken over. Writing past the end of an array is undefined behavior.',
+ '\\0 terminator':'A zero byte (NUL) that marks the end of a C string. printf("%s") and strcmp read until they find one.',
+ 'stdin':'Standard input: the stream of bytes the program reads, here whatever you type.'
+};
+const esc=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const GRE=new RegExp('(^|[^\\w])('+Object.keys(GLOSS).sort((a,b)=>b.length-a.length).map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')(?![\\w])','g');
+function gloss(t){const seen={};return esc(String(t)).replace(GRE,(m,p,k)=>seen[k]?m:(seen[k]=1,p+`<span class="tt" tabindex="0" data-tip="${esc(GLOSS[k])}">${k}</span>`));}
+(()=>{
+  const tip=$('tip'); let cur=null, pinned=false;
+  const T=e=>e.target.closest&&e.target.closest('[data-tip]');
+  const place=el=>{const r=el.getBoundingClientRect(),w=tip.offsetWidth,h=tip.offsetHeight,m=8;
+    tip.style.left=Math.round(Math.min(Math.max(m,r.left+r.width/2-w/2),innerWidth-w-m))+'px';
+    tip.style.top=Math.round(r.top-h-m>=m?r.top-h-m:r.bottom+m)+'px';};
+  const show=el=>{cur=el;tip.textContent=el.dataset.tip;tip.classList.add('on');el.setAttribute('aria-describedby','tip');place(el);};
+  const hide=()=>{if(cur)cur.removeAttribute('aria-describedby');cur=null;pinned=false;tip.classList.remove('on');};
+  window.tipHide=hide;
+  document.addEventListener('pointerover',e=>{const el=T(e); if(el&&e.pointerType==='mouse'&&!pinned) show(el);});
+  document.addEventListener('pointerout',e=>{if(e.pointerType==='mouse'&&!pinned&&T(e)) hide();});
+  document.addEventListener('focusin',e=>{const el=T(e); if(el&&el.matches(':focus-visible')) show(el);});
+  document.addEventListener('focusout',e=>{if(T(e)) hide();});
+  document.addEventListener('click',e=>{const el=T(e); if(!el) return hide(); if(cur===el&&pinned) hide(); else {show(el);pinned=true;}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape') hide(); else if((e.key==='Enter'||e.key===' ')&&T(e)&&e.target.classList.contains('tt')){e.preventDefault();e.target.click();}});
+  addEventListener('scroll',hide,true); addEventListener('resize',hide);
+})();
+renderCode(); updateLenLabel(); updatePace(); rebuild();
+</script>
+</body>
+</html>
