@@ -29,7 +29,9 @@
   .colR{flex:1 1 380px;min-width:300px;display:flex;flex-direction:column;}
   #arrowSvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6;}
   .ap{opacity:0;} .ap.show{opacity:.95;transition:opacity .12s;} .ap.late.show{transition-delay:.2s;}
-  #arrowPath{fill:none;stroke-width:4;stroke-linecap:round;}
+  #arrowPath{fill:none;stroke-width:3;stroke-linecap:round;filter:drop-shadow(0 1px 2px rgba(0,0,0,.28));}
+  #ah{filter:drop-shadow(0 1px 1px rgba(0,0,0,.3));}
+  #as{filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));}
   #alt{font-family:var(--mono);font-size:12px;fill:var(--text);text-anchor:middle;}
   #alr{fill:var(--panel);stroke-width:1.5;}
   .paceline{font-size:0.78rem;color:var(--muted);margin-top:6px;}
@@ -45,7 +47,7 @@
   label{font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;}
   input[type=text]{font-family:var(--mono);font-size:0.9rem;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);}
   input[type=text]::placeholder{color:var(--muted);opacity:1;}
-  #payload{width:100%;} #fill{width:60px;}
+  #payload,#payloadB{width:100%;}
   .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center;}
   button{font-family:inherit;font-size:0.8rem;padding:7px 13px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;}
   button:hover{border-color:var(--accent);color:var(--accent);}
@@ -116,13 +118,14 @@
   .cell,.rg,.gap{cursor:pointer;}
   .helpbtn{margin-top:10px;}
   .dp{opacity:0;} .dp.show{opacity:.95;transition:opacity .12s .12s;}
-  #dataPath{fill:none;stroke-width:3;stroke-dasharray:7 5;stroke-linecap:round;}
+  #dataPath{fill:none;stroke-width:3;stroke-dasharray:7 5;stroke-linecap:round;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25));}
+  #dh{filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));}
   #dlt{font-family:var(--mono);font-size:12px;fill:var(--text);text-anchor:middle;}
   #dlr{fill:var(--panel);stroke-width:1.5;}
-  #payload,#fill{background:var(--in-bg);color:var(--in-fg);border:2px solid var(--in-bd);font-weight:600;}
-  #payload{font-size:1rem;padding:10px 12px;}
-  #payload::placeholder{color:var(--in-ph);font-weight:400;}
-  #payload:focus,#fill:focus{outline:3px solid var(--accent);}
+  #payload,#payloadB{background:var(--in-bg);color:var(--in-fg);border:2px solid var(--in-bd);font-weight:600;}
+  #payload,#payloadB{font-size:1rem;padding:10px 12px;}
+  #payload::placeholder,#payloadB::placeholder{color:var(--in-ph);font-weight:400;}
+  #payload:focus,#payloadB:focus{outline:3px solid var(--accent);}
   .statusline{font-family:var(--mono);font-size:0.8rem;margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);}
   .console{font-family:var(--mono);font-size:0.82rem;background:#0b0b0f;color:#9fe79f;border-radius:8px;padding:10px 12px;min-height:3.2em;white-space:pre-wrap;}
   .desc{font-size:0.95rem;line-height:1.5;margin-top:14px;min-height:3.2em;padding:10px 12px;border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 8px 8px 0;}
@@ -188,18 +191,14 @@
     </div>
     <div id="controlsB" style="display:none;">
       <p class="hint" style="margin:0 0 8px;">Scenario: a door lock reads a password, and its firmware hides a <span class="tt" tabindex="0" data-tip="A universal password built into the firmware so police can unlock any door. Normal code never calls it, which is exactly what makes it a good target.">backdoor_password()</span>. Overflow the input to jump straight to it without knowing any real password.</p>
+      <label for="payloadB">Input passed into gets(buffer)</label>
+      <input id="payloadB" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="type characters to overflow the buffer…" value="AAAAAAAAAAAAAAAAAAAAAAAA">
       <div class="row">
-        <div><label for="fill">Fill byte</label><input id="fill" type="text" maxlength="1" value="A"></div>
-        <div style="flex:1;min-width:220px;"><label for="len">Overflow length: <span id="lenLabel">24</span> bytes <span class="hint" id="regionLabel"></span></label>
-          <input type="range" id="len" min="0" max="80" value="24" style="width:100%;"></div>
-        <div><label><input type="checkbox" id="redirect" style="width:auto;margin-right:6px;">craft exact RET → backdoor_password()</label></div>
+        <span class="hint">Fill byte: <b id="fillChar">'A'</b></span>
+        <span class="hint">Overflow length: <b id="lenCount">24</b> bytes <span id="regionLabel"></span></span>
       </div>
       <div class="row">
-        <button data-pb="5,false">safe, no overflow</button>
-        <button data-pb="20,false">fill exactly to RET boundary</button>
-        <button data-pb="24,false">garbage overwrite → crash</button>
-        <button data-pb="24,true">precise redirect → backdoor password</button>
-        <button data-pb="80,false">too long → segfault in gets()</button>
+        <label style="margin:0;"><input type="checkbox" id="redirect" style="width:auto;margin-right:6px;">craft exact RET → backdoor_password()</label>
       </div>
     </div>
     <div class="row">
@@ -218,6 +217,7 @@
     <div class="desc" id="desc">Pick a mode, edit the value, then hit Run.</div>
     <div class="why" id="why"><b>Why this happened</b><span id="whyText">Press Step ▶ or Run all. The reason for each step shows here.</span></div>
     <details class="acc" id="scenBox"><summary id="scenSum">Scenarios</summary><p class="hint">Load one, then press Run all. Each result and its reason is recorded here.</p><div class="scen" id="scen"></div></details>
+    <details class="acc" id="pbBox" style="display:none;"><summary id="pbSum">Scenarios</summary><p class="hint">Load one, then press Run all. Each result and its reason is recorded here.</p><div class="scen" id="pbScen"></div></details>
   </div>
 
   <div class="colR" id="colR">
@@ -350,7 +350,7 @@ function preSteps(){ if(spaceBuilt) return [];
   {line:null, pre:1, reveal:['cells'], why:'The stack is where each function keeps its local variables and the address to return to. It has to exist before the first function can run.', desc:'The stack segment is mapped. Here it is as bytes: one box per byte, with its address underneath. Lower addresses are at the top, and the stack grows toward them. Nothing in these boxes belongs to our program yet.'},
   {line:null, pre:1, last:1, reveal:['lo','hi'], why:'Memory outside our function’s frame is not ours, but nothing stops a buggy write from reaching it. Seeing it first makes the overflow visible later.', desc:'The dashed boxes are reserved: space below for later function calls and space above for the callers. Their bytes are leftovers. Our code is about to claim a piece in between.'}]; }
 function endSteps(){
-  const A=current==='A', P=$('payload').value, len=+$('len').value, o=A?outcomeA(P):outcomeB(len,$('fill').value,$('redirect').checked),
+  const A=current==='A', P=$('payload').value, PB=$('payloadB').value, len=PB.length, o=A?outcomeA(P):outcomeB(PB,$('redirect').checked),
     crash=o.k==='segv'||o.k==='ret'||o.k==='crash', hij=o.k==='hijack', spill=A?P.length+1>20:len>24, out=[];
   if(!crash&&!hij) out.push({line:null, flow:{active:null}, ops:[{op:'release'}],
     why:'Returning from a function costs almost nothing: the CPU just moves the stack pointer back. It does not clear memory, which is why leftover data can leak into later calls and why overflow damage stays put.',
@@ -418,9 +418,9 @@ function buildStepsA(payload){
   return steps;
 }
 
-function buildStepsB(len, fillChar, redirect){
-  const steps=[...preSteps()]; const fc=(fillChar||'A').charCodeAt(0)&0xff;
-  const bytes=Array(len).fill(fc); inputBytes=bytes;
+function buildStepsB(text, redirect){
+  const steps=[...preSteps()];
+  const bytes=[...text].map(c=>c.charCodeAt(0)&0xff); inputBytes=bytes; const len=bytes.length;
   if(redirect && len>=20){ const a=toLE(RET_SECRET,4); for(let k=0;k<4;k++) bytes[20+k]=a[k]; }
   steps.push({line:LB.MAIN, desc:'main() starts executing.', flow:{active:'fb-main'}});
   steps.push({line:LB.CALLFN, reveal:['ret'], lab:'CALL pushes return addr 0x080004a8', desc:'main() calls vulnerable(). CALL pushes the return address (0x080004a8).', ops:[0,1,2,3].map(k=>({op:'byte',region:'ret',index:k,value:toLE(RET_MAIN,4)[k],cls:'alloc'})), flow:{active:'fb-fn'}});
@@ -501,7 +501,7 @@ function targetFor0(s){
    Overlap is penalized heavily, and any stretch of the route that strays outside the empty gutter between the two
    columns is penalized too, so the arrow sticks to that open space instead of cutting across boxes or text. */
 function planRoute(x1,y1,T,obs,lanes,band){
-  const HL=26, G=9, V=16, tcx=(T.l+T.r)/2, tcy=T.t+Math.min((T.b-T.t)/2,30); let best=null;
+  const HL=16, G=9, V=16, tcx=(T.l+T.r)/2, tcy=T.t+Math.min((T.b-T.t)/2,30); let best=null;
   const ov=(p,q)=>{ let o=0; const h=Math.abs(p[1]-q[1])<.5;
     for(const [l,t,r,b] of obs){
       if(h){ if(p[1]>t&&p[1]<b) o+=Math.max(0,Math.min(Math.max(p[0],q[0]),r)-Math.max(Math.min(p[0],q[0]),l)); }
@@ -547,10 +547,11 @@ function draw(anim){
   let lanes=[0,1,2,3,4,5,6,7].map(i=>lx0+i*(lx1-lx0)/7).filter(cx=>cx>x1+12); if(!lanes.length) lanes=[x1+20];
   const route=planRoute(x1,y1,{l:t.left-S.left,r:t.right-S.left,t:t.top-S.top,b:t.bottom-S.top},obs,lanes,[lx0,lx1]);
   if(!route) return hide();
-  const P=route.pts, [bx,by]=P[P.length-1], [ux,uy]=route.u, [ex,ey]=route.E, col=`var(${A.color})`, HW=14;
+  const P=route.pts, [bx,by]=P[P.length-1], [ux,uy]=route.u, [ex,ey]=route.E, col=`var(${A.color})`, HW=6, NX=bx+ux*6.5, NY=by+uy*6.5;
   p.setAttribute('d',roundPath(P,14));
   p.style.stroke=col; $('ah').style.fill=col; $('as').style.fill=col; $('alr').style.stroke=col;
-  $('ah').setAttribute('points',`${ex},${ey} ${bx+uy*HW},${by-ux*HW} ${bx-uy*HW},${by+ux*HW}`);
+  /* small, precise dart: tip at the exact target edge, a slight concave notch at the back for a crisper, fancier head */
+  $('ah').setAttribute('points',`${ex},${ey} ${bx+uy*HW},${by-ux*HW} ${NX},${NY} ${bx-uy*HW},${by+ux*HW}`);
   $('as').setAttribute('cx',x1); $('as').setAttribute('cy',y1);
   /* label: slide it along the route to the spot where it covers the least */
   const lt=$('alt'); lt.textContent=A.label; const b0=lt.getBBox(), LW=b0.width+14, LH=b0.height+6, tot=p.getTotalLength();
@@ -577,10 +578,10 @@ function drawData(A,S,anim){
   const dp=$('dataPath'), dh=$('dh'), ds=[dp,dh,$('dlab')], to=A.to&&A.to(), fr=A.get();
   if(!to||!fr){ ds.forEach(e=>e.classList.remove('show')); return; }
   const a=fr.getBoundingClientRect(), b=to.getBoundingClientRect();
-  const x1=a.left+a.width/2-S.left, y1=a.bottom+1-S.top, x2=b.left+b.width/2-S.left, y2=b.top-3-S.top, ye=y2-9, col=`var(${A.color})`;
+  const x1=a.left+a.width/2-S.left, y1=a.bottom+1-S.top, x2=b.left+b.width/2-S.left, y2=b.top-3-S.top, ye=y2-7, col=`var(${A.color})`;
   dp.setAttribute('d',`M${x1} ${y1}C${x1} ${y1+50} ${x2} ${ye-50} ${x2} ${ye}`);
   dp.style.stroke=col; dh.style.fill=col; $('dlr').style.stroke=col;
-  dh.setAttribute('points',`${x2},${y2} ${x2-6},${ye} ${x2+6},${ye}`);
+  dh.setAttribute('points',`${x2},${y2} ${x2+4},${ye} ${x2},${ye+2.5} ${x2-4},${ye}`);
   const lt=$('dlt'); lt.textContent=A.toLabel;
   lt.setAttribute('x',(x1+x2)/2); lt.setAttribute('y',(y1+ye)/2);
   const bb=lt.getBBox(), r=$('dlr');
@@ -645,7 +646,7 @@ function stopPlay(){ clearTimeout(timer); timer=null; $('pause').disabled=true; 
 function rebuild(){
   stopPlay(); if(pend){clearTimeout(pend.t);pend=null;}
   steps = current==='A' ? buildStepsA($('payload').value)
-                         : buildStepsB(+$('len').value, $('fill').value, $('redirect').checked);
+                         : buildStepsB($('payloadB').value, $('redirect').checked);
   steps.forEach(x=>{ if(!x.why) x.why=whyOf(x); });
   idx=-1; lastArrow=null; draw(false);
   document.querySelectorAll('.tgt').forEach(e=>e.classList.remove('tgt'));
@@ -654,7 +655,7 @@ function rebuild(){
   $('desc').textContent='Ready. Press Step to go one step at a time, or Run all to watch it play at the speed set below.';
   $('stepcount').textContent=`Step 0 / ${steps.length}`;
   $('step').disabled=false; $('run').textContent='Run all ▶';
-  $('whyText').textContent='Press Step ▶ or Run all. The reason for each step shows here.'; renderScen();
+  $('whyText').textContent='Press Step ▶ or Run all. The reason for each step shows here.'; renderScen(); renderScenB();
 }
 function switchMode(m){
   current=m;
@@ -662,12 +663,14 @@ function switchMode(m){
   $('controlsA').style.display = m==='A'?'block':'none';
   $('controlsB').style.display = m==='B'?'block':'none';
   $('scenBox').style.display = m==='A'?'block':'none';
+  $('pbBox').style.display = m==='B'?'block':'none';
   rebuild();
 }
-function updateLenLabel(){
-  const v=+$('len').value;
-  $('lenLabel').textContent=v;
-  $('regionLabel').textContent = v<=16?'(inside buffer)':v<20?'(reaches into SFP)':v<24?'(reaches into RET!)':v<=LIMIT?'(past RET, into caller data)':'(runs off the stack → segfault!)';
+function updateInfoB(){
+  const v=$('payloadB').value, n=v.length;
+  $('fillChar').textContent = n?`'${v[0]}'`:'—';
+  $('lenCount').textContent = n;
+  $('regionLabel').textContent = n<=16?'(inside buffer)':n<20?'(reaches into SFP)':n<24?'(reaches into RET!)':n<=LIMIT?'(past RET, into caller data)':'(runs off the stack → segfault!)';
 }
 function updatePace(){
   $('paceline').textContent=`${pace()/1000} s per step. The arrow shows first, then memory changes. Step ▶ is always one step at a time.`;
@@ -688,15 +691,11 @@ $('reset').addEventListener('click', ()=>{
   
   rebuild();
 });
-$('len').addEventListener('input', ()=>{updateLenLabel(); rebuild();});
-$('payload').addEventListener('input', rebuild); $('fill').addEventListener('input', rebuild); $('redirect').addEventListener('change', rebuild);
+$('payload').addEventListener('input', rebuild);
+$('payloadB').addEventListener('input', ()=>{updateInfoB(); rebuild();}); $('redirect').addEventListener('change', rebuild);
 $('speed').addEventListener('input', updatePace);
 window.addEventListener('resize', ()=>draw(false));
 document.querySelectorAll('button[data-pa]').forEach(b=>b.addEventListener('click',()=>{$('payload').value=b.dataset.pa; rebuild();}));
-document.querySelectorAll('button[data-pb]').forEach(b=>b.addEventListener('click',()=>{
-  const [len,redir]=b.dataset.pb.split(','); $('len').value=len; updateLenLabel();
-  $('redirect').checked = redir==='true'; rebuild();
-}));
 
 const hx2=v=>v.toString(16).padStart(2,'0'), dec=n=>n.toLocaleString('en-US'), GEN=()=>$('genTpl').innerHTML;
 function showPop(h){ $('popbody').innerHTML=h; $('pop').classList.add('open'); }
@@ -760,6 +759,13 @@ const SCEN=[
  {id:'huge',name:'Really, really long input',inp:'Qz7!mK2x'.repeat(13).slice(0,100)},
  {id:'bad',name:'Short input that fails the test',inp:'hello'}];
 const BADK=new Set(['flip','ret','segv','hijack','crash']); const done={};
+const SCENB=[
+ {id:'b-safe', name:'safe, no overflow', inp:'A'.repeat(5), redirect:false},
+ {id:'b-ret', name:'fill exactly to RET boundary', inp:'A'.repeat(20), redirect:false},
+ {id:'b-crash', name:'garbage overwrite → crash', inp:'A'.repeat(24), redirect:false},
+ {id:'b-redirect', name:'precise redirect → backdoor password', inp:'A'.repeat(24), redirect:true},
+ {id:'b-segv', name:'too long → segfault in gets()', inp:'A'.repeat(80), redirect:false}];
+const doneB={};
 function outcomeA(p){
   const n=p.length, B=n+1, b=[...p].map(c=>c.charCodeAt(0)&255).concat(0), gr=fromLE([0,1,2,3].map(k=>b[16+k]||0));
   if(B>LIMIT) return {k:'segv',t:'Segmentation fault',why:`${n} characters plus the \\0 is ${B} bytes, but only ${LIMIT} bytes above buffer are mapped stack. gets() kept copying until the next byte (${hex8(BASE+8+LIMIT)}) was outside it, and the CPU raised SIGSEGV mid-write. printf, strcmp and everything after never ran.`};
@@ -770,8 +776,8 @@ function outcomeA(p){
   if(n===0) return {k:'none',t:'Denied (empty input)',why:'Nothing typed, so gets() stored only the \\0 terminator in buffer[0]. strcmp compares "" with "letmein", which does not match, so granted stays 0 and the else branch prints Access denied. No overflow: 1 of 16 bytes used.'};
   return {k:'bad',t:'Denied (wrong password)',why:`${n} characters plus the \\0 is ${B} bytes, which fits in the 16-byte buffer, so nothing overflowed. strcmp finds a mismatch with "letmein", granted stays 0, and the else branch prints Access denied.`};
 }
-function outcomeB(len,fc,redirect){
-  const b=Array(len).fill((fc||'A').charCodeAt(0)&255);
+function outcomeB(text,redirect){
+  const b=[...text].map(c=>c.charCodeAt(0)&255), len=b.length;
   if(redirect&&len>=20){const a=toLE(RET_SECRET,4);for(let k=0;k<4;k++) b[20+k]=a[k];}
   if(b.length>LIMIT) return {k:'segv',t:'Segmentation fault',why:`${b.length} bytes, but only ${LIMIT} bytes above buffer are mapped stack. gets() hit unmapped memory at ${hex8(BASE+8+LIMIT)} and the CPU raised SIGSEGV mid-write.`};
   const num=fromLE([0,1,2,3].map(k=>b.length>20+k?b[20+k]:toLE(RET_MAIN,4)[k]));
@@ -781,7 +787,7 @@ function outcomeB(len,fc,redirect){
 }
 function whyOf(s){
   const A=current==='A', P=$('payload').value, n=P.length, f=s.flow&&s.flow.active, L=A?LA:LB, is=k=>s.line===L[k],
-    o=A?outcomeA(P):outcomeB(+$('len').value,$('fill').value,$('redirect').checked);
+    o=A?outcomeA(P):outcomeB($('payloadB').value,$('redirect').checked);
   if(s.line==null) return o.why;
   if(s.fill){ const W=s.ops.length+s.beyond;
     return s.fault?`gets() keeps copying with no size check. The stack mapping ends ${LIMIT} bytes above buffer, so the write runs into unmapped memory and the CPU kills the program mid-copy.`
@@ -822,9 +828,10 @@ function whyOf(s){
   return '';
 }
 function showWhy(){
-  const o=current==='A'?outcomeA($('payload').value):outcomeB(+$('len').value,$('fill').value,$('redirect').checked);
+  const o=current==='A'?outcomeA($('payload').value):outcomeB($('payloadB').value,$('redirect').checked);
   $('whyText').textContent=o.why;
   if(current==='A'){ const sc=SCEN.find(x=>x.inp===$('payload').value); if(sc){ done[sc.id]=o; renderScen(); } }
+  else { const sc=SCENB.find(x=>x.inp===$('payloadB').value && !!x.redirect===$('redirect').checked); if(sc){ doneB[sc.id]=o; renderScenB(); } }
 }
 function renderScen(){
   const el=$('scen'); if(!el) return; const cur=$('payload').value; el.innerHTML=''; $('scenSum').textContent=`Scenarios (${Object.keys(done).length} of ${SCEN.length} tried)`;
@@ -833,7 +840,15 @@ function renderScen(){
     el.appendChild(d); });
 }
 $('scen').addEventListener('click',e=>{ const b=e.target.closest('[data-sc]'); if(!b) return; $('payload').value=SCEN.find(x=>x.id===b.dataset.sc).inp; rebuild(); $('run').scrollIntoView({behavior:'smooth',block:'center'}); });
-renderCode(); updateLenLabel(); updatePace(); rebuild();
+function renderScenB(){
+  const el=$('pbScen'); if(!el) return; const cur=$('payloadB').value, curR=$('redirect').checked;
+  el.innerHTML=''; $('pbSum').textContent=`Scenarios (${Object.keys(doneB).length} of ${SCENB.length} tried)`;
+  SCENB.forEach(sc=>{ const r=doneB[sc.id], on=sc.inp===cur&&!!sc.redirect===curR, d=document.createElement('div'); d.className='sc'+(on?' on':'');
+    d.innerHTML=`<div class="hd"><button type="button" data-sb="${sc.id}">${sc.name}</button><span class="st${r&&BADK.has(r.k)?' bad':''}">${r?'✓ '+esc(r.t):'not tried'}</span></div>`+(r?`<div class="sw">${esc(r.why)}</div>`:'');
+    el.appendChild(d); });
+}
+$('pbScen').addEventListener('click',e=>{ const b=e.target.closest('[data-sb]'); if(!b) return; const sc=SCENB.find(x=>x.id===b.dataset.sb); $('payloadB').value=sc.inp; $('redirect').checked=!!sc.redirect; updateInfoB(); rebuild(); $('run').scrollIntoView({behavior:'smooth',block:'center'}); });
+renderCode(); updateInfoB(); updatePace(); rebuild();
 </script>
 </body>
 </html>
